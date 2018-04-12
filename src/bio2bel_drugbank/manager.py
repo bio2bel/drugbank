@@ -13,7 +13,7 @@ log = logging.getLogger(__name__)
 
 class Manager(AbstractManager):
     module_name = MODULE_NAME
-    flask_admin_models = [Drug, Alias, AtcCode, Category, Group, Type, Patent]
+    flask_admin_models = [Drug, Alias, AtcCode, Category, Group, Type, Patent, Xref]
 
     def __init__(self, connection=None):
         super().__init__(connection=connection)
