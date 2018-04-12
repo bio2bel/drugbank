@@ -1,0 +1,28 @@
+sudo: false
+cache: pip
+services:
+- mysql
+language: python
+python: 3.6
+env:
+  global:
+  - BIO2BEL_CONNECTION=mysql+pymysql://travis@localhost/bio2bel?charset=utf8'
+  matrix:
+  - TOXENV=py
+  - TOXENV=docs
+  - TOXENV=manifest
+  - TOXENV=rst-lint
+before_install:
+- pip install codecov
+- pip install pymysql
+- mysql -e 'CREATE DATABASE bio2bel CHARACTER SET utf8 COLLATE utf8_general_ci;'
+- mysql -e "GRANT ALL PRIVILEGES ON bio2bel.* to 'travis'@'%' WITH GRANT OPTION;"
+install:
+- pip install tox
+script:
+- tox
+after_success:
+- tox -e coverage-report
+- codecov
+notifications:
+  slack: pybel:n2KbWKBum3musnBg3L76gGwq
