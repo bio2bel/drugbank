@@ -4,7 +4,7 @@ from . import manager, models
 from .manager import *
 from .models import *
 
-__all__ = (manager.__all__ + models.__all__)
+__all__ = manager.__all__ + models.__all__
 
 __version__ = '0.0.1-dev'
 

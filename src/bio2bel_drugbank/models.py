@@ -1,10 +1,14 @@
 # -*- coding: utf-8 -*-
 
-"""Database models for bio2bel_drugbank"""
+"""Database models for bio2bel_drugbank."""
 
 from sqlalchemy import Boolean, Column, Date, ForeignKey, Integer, String, Table, Text, and_
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import backref, relationship
+
+from pybel.constants import ASSOCIATION
+from pybel.dsl import abundance, protein
+from .constants import MODULE_NAME
 
 __all__ = [
     'Base',
@@ -20,23 +24,22 @@ __all__ = [
 
 Base = declarative_base()
 
-TABLE_PREFIX = 'drugbank'
-DRUG_TABLE_NAME = f'{TABLE_PREFIX}_drug'
-TYPE_TABLE_NAME = f'{TABLE_PREFIX}_type'
-ALIAS_TABLE_NAME = f'{TABLE_PREFIX}_alias'
-ATC_TABLE_NAME = f'{TABLE_PREFIX}_atc'
-CATEGORY_TABLE_NAME = f'{TABLE_PREFIX}_category'
-GROUP_TABLE_NAME = f'{TABLE_PREFIX}_group'
-DRUG_CATEGORY_TABLE_NAME = f'{TABLE_PREFIX}_drug_category'
-DRUG_GROUP_TABLE_NAME = f'{TABLE_PREFIX}_drug_group'
-PATENT_TABLE_NAME = f'{TABLE_PREFIX}_patent'
-DRUG_PATENT_TABLE_NAME = f'{TABLE_PREFIX}_drug_patent'
-DRUG_XREF_TABLE_NAME = f'{TABLE_PREFIX}_drug_xref'
-SPECIES_TABLE_NAME = f'{TABLE_PREFIX}_species'
-PROTEIN_TABLE_NAME = f'{TABLE_PREFIX}_protein'
-ACTION_TABLE_NAME = f'{TABLE_PREFIX}_action'
-DRUG_PROTEIN_TABLE_NAME = f'{TABLE_PREFIX}_drug_protein'
-DRUG_PROTEIN_ACTION_TABLE_NAME = f'{TABLE_PREFIX}_drug_protein_action'
+DRUG_TABLE_NAME = f'{MODULE_NAME}_drug'
+TYPE_TABLE_NAME = f'{MODULE_NAME}_type'
+ALIAS_TABLE_NAME = f'{MODULE_NAME}_alias'
+ATC_TABLE_NAME = f'{MODULE_NAME}_atc'
+CATEGORY_TABLE_NAME = f'{MODULE_NAME}_category'
+GROUP_TABLE_NAME = f'{MODULE_NAME}_group'
+DRUG_CATEGORY_TABLE_NAME = f'{MODULE_NAME}_drug_category'
+DRUG_GROUP_TABLE_NAME = f'{MODULE_NAME}_drug_group'
+PATENT_TABLE_NAME = f'{MODULE_NAME}_patent'
+DRUG_PATENT_TABLE_NAME = f'{MODULE_NAME}_drug_patent'
+DRUG_XREF_TABLE_NAME = f'{MODULE_NAME}_drug_xref'
+SPECIES_TABLE_NAME = f'{MODULE_NAME}_species'
+PROTEIN_TABLE_NAME = f'{MODULE_NAME}_protein'
+ACTION_TABLE_NAME = f'{MODULE_NAME}_action'
+DRUG_PROTEIN_TABLE_NAME = f'{MODULE_NAME}_drug_protein'
+DRUG_PROTEIN_ACTION_TABLE_NAME = f'{MODULE_NAME}_drug_protein_action'
 
 drug_group = Table(
     DRUG_GROUP_TABLE_NAME,
@@ -68,6 +71,7 @@ dpi_action = Table(
 
 
 class Type(Base):
+    """Represents the type of a drug - either small molecule or biologic."""
     __tablename__ = TYPE_TABLE_NAME
     id = Column(Integer, primary_key=True)
     name = Column(String(255), unique=True, index=True, nullable=False)
@@ -77,7 +81,7 @@ class Type(Base):
 
 
 class Drug(Base):
-    """Represents a chemical"""
+    """Represents a drug."""
     __tablename__ = DRUG_TABLE_NAME
 
     id = Column(Integer, primary_key=True)
@@ -95,9 +99,12 @@ class Drug(Base):
     def __repr__(self):
         return self.name
 
+    def as_bel(self):
+        return abundance(namespace=MODULE_NAME, name=self.name, identifier=self.drugbank_id)
+
 
 class DrugXref(Base):
-    """Represents a cross-reference to another database"""
+    """Represents a drug's cross-reference to another database."""
     __tablename__ = DRUG_XREF_TABLE_NAME
 
     id = Column(Integer, primary_key=True)
@@ -113,7 +120,7 @@ class DrugXref(Base):
 
 
 class Patent(Base):
-    """Represents a patent"""
+    """Represents a patent."""
     __tablename__ = PATENT_TABLE_NAME
 
     id = Column(Integer, primary_key=True)
@@ -132,7 +139,7 @@ class Patent(Base):
 
 
 class Alias(Base):
-    """Represents an alias of a drug"""
+    """Represents an alias of a drug."""
     __tablename__ = ALIAS_TABLE_NAME
 
     id = Column(Integer, primary_key=True)
@@ -147,7 +154,7 @@ class Alias(Base):
 
 
 class AtcCode(Base):
-    """Represents an ATC code of a drug"""
+    """Represents an ATC code of a drug."""
     __tablename__ = ATC_TABLE_NAME
 
     id = Column(Integer, primary_key=True)
@@ -162,6 +169,7 @@ class AtcCode(Base):
 
 
 class Group(Base):
+    """Represents a drug group."""
     __tablename__ = GROUP_TABLE_NAME
 
     id = Column(Integer, primary_key=True)
@@ -175,6 +183,7 @@ class Group(Base):
 
 
 class Category(Base):
+    """Represents a drug category."""
     __tablename__ = CATEGORY_TABLE_NAME
 
     id = Column(Integer, primary_key=True)
@@ -189,17 +198,18 @@ class Category(Base):
 
 
 class Species(Base):
+    """Represents a species."""
     __tablename__ = SPECIES_TABLE_NAME
 
     id = Column(Integer, primary_key=True)
     name = Column(String(255), unique=True, index=True, nullable=False)
 
-
     def __repr__(self):
         return self.name
 
+
 class Protein(Base):
-    """Represents a protein"""
+    """Represents a protein."""
     __tablename__ = PROTEIN_TABLE_NAME
 
     id = Column(Integer, primary_key=True)
@@ -215,8 +225,18 @@ class Protein(Base):
     def __repr__(self):
         return self.uniprot_id
 
+    def as_bel_hgnc(self):
+        return protein(namespace='HGNC', identifier=self.hgnc_id)
+
+    def as_bel(self):
+        if self.hgnc_id:
+            return self.as_bel_hgnc()
+
+        return protein(namespace='UNIPROT', identifier=self.uniprot_id)
+
 
 class Action(Base):
+    """Represents the action a drug takes in a drug-protein interaction."""
     __tablename__ = ACTION_TABLE_NAME
 
     id = Column(Integer, primary_key=True)
@@ -224,7 +244,7 @@ class Action(Base):
 
 
 class DrugProteinInteraction(Base):
-    """Represents an ineraction between a drug and a protein"""
+    """Represents an interaction between a drug and a protein."""
     __tablename__ = DRUG_PROTEIN_TABLE_NAME
 
     id = Column(Integer, primary_key=True)
@@ -238,4 +258,21 @@ class DrugProteinInteraction(Base):
     category = Column(String(32), nullable=False)  # target, enzyme, etc...
     known_action = Column(Boolean, nullable=False)
 
-    actions = relationship(Action, secondary=dpi_action, lazy='dynamic', backref=backref('drug_protein_interactions', lazy='dynamic'))
+    actions = relationship(Action, secondary=dpi_action, lazy='dynamic',
+                           backref=backref('drug_protein_interactions', lazy='dynamic'))
+
+    def add_to_graph(self, graph):
+        """Adds this interaction to the graph
+
+        :param pybel.BELGraph graph: A BEL graph
+        :return: The hash of the edge that was added
+        :rtype: str
+        """
+        # TODO update implementation to use actions
+        return graph.add_qualified_edge(
+            self.drug.as_bel(),
+            self.protein.as_bel(),
+            relation=ASSOCIATION,
+            citation='29126136',
+            evidence='From DrugBank',
+        )

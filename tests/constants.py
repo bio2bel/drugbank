@@ -1,5 +1,7 @@
 # -*- coding: utf-8 -*-
 
+"""Constants for testing bio2bel_drugbank."""
+
 import logging
 import os
 
@@ -12,10 +14,11 @@ dir_path = os.path.dirname(os.path.realpath(__file__))
 resources_path = os.path.join(dir_path, 'resources')
 test_xml_path = os.path.join(resources_path, 'test.xml')
 
-TemporaryCacheClassMixin = make_temporary_cache_class_mixin(Manager)
 
+class PopulatedTemporaryCacheClassMixin(make_temporary_cache_class_mixin(Manager)):
+    """Create a test suite that has a populated database."""
 
-class PopulatedTemporaryCacheClassMixin(TemporaryCacheClassMixin):
     @classmethod
     def populate(cls):
+        """Override the populate hook."""
         cls.manager.populate(url=test_xml_path)

@@ -1,16 +1,19 @@
 # -*- coding: utf-8 -*-
 
+"""Defines the Bio2BEL DrugBank manager."""
+
 import logging
 
 import time
 from tqdm import tqdm
 
 from bio2bel import AbstractManager
+from pybel import BELGraph
 from pybel.manager.models import Namespace, NamespaceEntry
 from .constants import MODULE_NAME
 from .models import (
-    Action, Alias, AtcCode, Base, Category, Drug, DrugProteinInteraction, Group, Patent, Protein, Species, Type, DrugXref,
-    drug_category, drug_group,
+    Action, Alias, AtcCode, Base, Category, Drug, DrugProteinInteraction, DrugXref, Group, Patent, Protein, Species,
+    Type, drug_category, drug_group,
 )
 from .parser import extract_drug_info, get_xml_root
 
@@ -20,12 +23,16 @@ log = logging.getLogger(__name__)
 
 
 class Manager(AbstractManager):
-    """Manager for Bio2BEL DrugBank"""
+    """Manager for Bio2BEL DrugBank."""
+
     module_name = MODULE_NAME
     flask_admin_models = [Drug, Alias, AtcCode, Category, Group, Type, Patent, DrugXref, Species, Protein,
                           DrugProteinInteraction, Action]
 
     def __init__(self, connection=None):
+        """
+        :param Optional[str] connection: SQLAlchemy connection string
+        """
         super().__init__(connection=connection)
 
         self.type_to_model = {}
@@ -41,9 +48,18 @@ class Manager(AbstractManager):
         return Base
 
     def get_type_by_name(self, name):
+        """Gets a Type by name.
+
+        :param str name:
+        :rtype: Optional[Type]
+        """
         return self.session.query(Type).filter(Type.name == name).one_or_none()
 
     def get_or_create_type(self, name):
+        """Gets or creates a Type by name.
+
+        :rtype: Type
+        """
         m = self.type_to_model.get(name)
         if m is not None:
             return m
@@ -58,9 +74,11 @@ class Manager(AbstractManager):
         return m
 
     def get_group_by_name(self, name):
+        """Gets a Group by name."""
         return self.session.query(Group).filter(Group.name == name).one_or_none()
 
     def get_or_create_group(self, name):
+        """Gets or creates a Group by name."""
         m = self.group_to_model.get(name)
         if m is not None:
             return m
@@ -75,9 +93,11 @@ class Manager(AbstractManager):
         return m
 
     def get_species_by_name(self, name):
+        """Gets a Species by name."""
         return self.session.query(Species).filter(Species.name == name).one_or_none()
 
     def get_or_create_species(self, name):
+        """Gets or creates a Species by name."""
         m = self.species_to_model.get(name)
         if m is not None:
             return m
@@ -92,9 +112,11 @@ class Manager(AbstractManager):
         return m
 
     def get_category_by_name(self, name):
+        """Gets a Category by name."""
         return self.session.query(Category).filter(Category.name == name).one_or_none()
 
     def get_or_create_category(self, name, **kwargs):
+        """Gets or creates a Category by name."""
         m = self.category_to_model.get(name)
         if m is not None:
             return m
@@ -109,6 +131,7 @@ class Manager(AbstractManager):
         return m
 
     def get_or_create_patent(self, country, patent_id, **kwargs):
+        """Gets or creates a Patent."""
         m = self.patent_to_model.get((country, patent_id))
         if m is not None:
             return m
@@ -127,7 +150,7 @@ class Manager(AbstractManager):
         return m
 
     def is_populated(self):
-        """Checks if the databse is populated by counting the drugs
+        """Checks if the database is populated by counting the drugs.
 
         :rtype: bool
         """
@@ -340,6 +363,13 @@ class Manager(AbstractManager):
     def count_drug_protein_interactions(self):
         return self._count_model(DrugProteinInteraction)
 
+    def list_drug_protein_interactions(self):
+        """List drug-protein interactions
+
+        :rtype: list[DrugProteinInteraction]
+        """
+        return self._list_model(DrugProteinInteraction)
+
     def summarize(self):
         """Summarizes the database
 
@@ -426,3 +456,24 @@ class Manager(AbstractManager):
         self._update_namespace(ns)
 
         return ns
+
+    def to_bel(self):
+        graph = BELGraph(
+            name='DrugBank',
+            version='5.1',
+        )
+        namespace = self.upload_bel_namespace()
+
+        graph.namespace_url[namespace.keyword] = namespace.url
+
+        import bio2bel_hgnc
+        hgnc_manager = bio2bel_hgnc.Manager(connection=self.connection)
+        hgnc_namespace = hgnc_manager.upload_bel_namespace()
+        graph.namespace_url[hgnc_namespace.keyword] = hgnc_namespace.url
+
+        for dpi in tqdm(self.list_drug_protein_interactions(), total=self.count_drug_protein_interactions()):
+            if dpi.protein.hgnc_id is None:
+                continue
+            dpi.add_to_graph(graph)
+
+        return graph
