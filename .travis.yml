@@ -7,11 +7,15 @@ python: 3.6
 env:
   global:
   - BIO2BEL_CONNECTION=mysql+pymysql://travis@localhost/bio2bel?charset=utf8'
-  matrix:
-  - TOXENV=py
-  - TOXENV=docs
-  - TOXENV=manifest
-  - TOXENV=rst-lint
+matrix:
+  include:
+    - env: TOXENV=py
+    - env: TOXENV=docs
+    - env: TOXENV=manifest
+    - env: TOXENV=rst-lint
+    - env: TOXENV=flake8
+  allow_failures:
+    - env: TOXENV=flake8
 before_install:
 - pip install codecov
 - pip install pymysql
@@ -19,6 +23,8 @@ before_install:
 - mysql -e "GRANT ALL PRIVILEGES ON bio2bel.* to 'travis'@'%' WITH GRANT OPTION;"
 install:
 - pip install tox
+- pip install codecov
+- pip install coverage
 script:
 - tox
 after_success:
