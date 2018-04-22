@@ -4,10 +4,9 @@
 
 import click
 
-from bio2bel import build_cli
 from .manager import Manager
 
-main = build_cli(Manager)
+main = Manager.get_cli()
 
 
 @main.group()

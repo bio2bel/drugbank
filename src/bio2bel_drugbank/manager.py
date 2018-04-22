@@ -37,7 +37,7 @@ class Manager(AbstractManager):
         self.uniprot_id_to_protein = {}
 
     @property
-    def base(self):
+    def _base(self):
         return Base
 
     def get_type_by_name(self, name):
