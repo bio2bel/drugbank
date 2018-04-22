@@ -1,10 +1,15 @@
 # -*- coding: utf-8 -*-
 
-from bio2bel import AbstractManager
-from .constants import MODULE_NAME
-from .models import Alias, AtcCode, Base, Category, Drug, Group, Patent, Type, drug_category, drug_group, Xref
-from .parser import *
+import logging
+
 import time
+from tqdm import tqdm
+
+from bio2bel import AbstractManager
+from pybel.manager.models import Namespace, NamespaceEntry
+from .constants import MODULE_NAME
+from .models import Alias, AtcCode, Base, Category, Drug, Group, Patent, Type, Xref, drug_category, drug_group
+from .parser import extract_drug_info, get_xml_root
 
 __all__ = ['Manager']
 
@@ -220,6 +225,13 @@ class Manager(AbstractManager):
         """
         return self._count_model(Patent)
 
+    def list_patents(self):
+        """Lists the patents in the database
+
+        :rtype: list[Patent]
+        """
+        return self._list_model(Patent)
+
     def count_xrefs(self):
         """Count the number of cross-references in the database
 
@@ -242,3 +254,70 @@ class Manager(AbstractManager):
             patents=self.count_patents(),
             xrefs=self.count_xrefs(),
         )
+
+    def _iterate_id_name(self):
+        return tqdm(self.session.query(Drug.drugbank_id, Drug.name), total=self.count_drugs())
+
+    def _get_namespace_entries(self):
+        return [
+            NamespaceEntry(encoding='A', identifier=identifier, name=name)
+            for identifier, name in self._iterate_id_name()
+        ]
+
+    def _make_namespace(self):
+        """
+        :rtype: pybel.manager.models.Namespace
+        """
+        entries = self._get_namespace_entries()
+        _namespace_keyword = self._get_namespace_keyword()
+        ns = Namespace(
+            name=_namespace_keyword,
+            keyword=_namespace_keyword,
+            url=_namespace_keyword,
+            version=str(time.asctime()),
+            entries=entries,
+        )
+        self.session.add(ns)
+
+        t = time.time()
+        log.info('committing models')
+        self.session.commit()
+        log.info('committed models in %.2f seconds', time.time() - t)
+
+        return ns
+
+    def _update_namespace(self, ns):
+        """
+        :param pybel.manager.models.Namespace ns:
+        """
+        old = {term.identifier for term in ns.entries}
+        new_count = 0
+
+        for identifier, name in self._iterate_id_name():
+            if identifier in old:
+                continue
+
+            new_count += 1
+            entry = NamespaceEntry(encoding='A', identifier=identifier, name=name, namespace=ns)
+            self.session.add(entry)
+
+        t = time.time()
+        log.info('got %d new entries. committing models', new_count)
+        self.session.commit()
+        log.info('committed models in %.2f seconds', time.time() - t)
+
+    def upload_bel_namespace(self):
+        """
+        :rtype: pybel.manager.models.Namespace
+        """
+        if not self.is_populated():
+            self.populate()
+
+        ns = self._get_default_namespace()
+
+        if ns is None:
+            return self._make_namespace()
+
+        self._update_namespace(ns)
+
+        return ns
