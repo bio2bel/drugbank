@@ -8,7 +8,10 @@ from tqdm import tqdm
 from bio2bel import AbstractManager
 from pybel.manager.models import Namespace, NamespaceEntry
 from .constants import MODULE_NAME
-from .models import Alias, AtcCode, Base, Category, Drug, Group, Patent, Type, Xref, drug_category, drug_group
+from .models import (
+    Action, Alias, AtcCode, Base, Category, Drug, DrugProteinInteraction, Group, Patent, Protein, Species, Type, DrugXref,
+    drug_category, drug_group,
+)
 from .parser import extract_drug_info, get_xml_root
 
 __all__ = ['Manager']
@@ -19,7 +22,8 @@ log = logging.getLogger(__name__)
 class Manager(AbstractManager):
     """Manager for Bio2BEL DrugBank"""
     module_name = MODULE_NAME
-    flask_admin_models = [Drug, Alias, AtcCode, Category, Group, Type, Patent, Xref]
+    flask_admin_models = [Drug, Alias, AtcCode, Category, Group, Type, Patent, DrugXref, Species, Protein,
+                          DrugProteinInteraction, Action]
 
     def __init__(self, connection=None):
         super().__init__(connection=connection)
@@ -28,6 +32,9 @@ class Manager(AbstractManager):
         self.group_to_model = {}
         self.category_to_model = {}
         self.patent_to_model = {}
+        self.species_to_model = {}
+        self.action_to_model = {}
+        self.uniprot_id_to_protein = {}
 
     @property
     def base(self):
@@ -64,6 +71,23 @@ class Manager(AbstractManager):
             return m
 
         m = self.group_to_model[name] = Group(name=name)
+        self.session.add(m)
+        return m
+
+    def get_species_by_name(self, name):
+        return self.session.query(Species).filter(Species.name == name).one_or_none()
+
+    def get_or_create_species(self, name):
+        m = self.species_to_model.get(name)
+        if m is not None:
+            return m
+
+        m = self.get_species_by_name(name)
+        if m is not None:
+            self.species_to_model[name] = m
+            return m
+
+        m = self.species_to_model[name] = Species(name=name)
         self.session.add(m)
         return m
 
@@ -109,6 +133,66 @@ class Manager(AbstractManager):
         """
         return 0 != self.count_drugs()
 
+    def get_protein_by_uniprot_id(self, uniprot_id):
+        return self.session.query(Protein).filter(Protein.uniprot_id == uniprot_id).one_or_none()
+
+    def get_or_create_protein(self, uniprot_id, **kwargs):
+        m = self.uniprot_id_to_protein.get(uniprot_id)
+        if m is not None:
+            return m
+
+        m = self.get_protein_by_uniprot_id(uniprot_id)
+        if m is not None:
+            self.uniprot_id_to_protein[uniprot_id] = m
+            return m
+
+        m = self.uniprot_id_to_protein[uniprot_id] = Protein(
+            uniprot_id=uniprot_id,
+            **kwargs
+        )
+        self.session.add(m)
+        return m
+
+    def get_action_by_name(self, name):
+        return self.session.query(Action).filter(Action.name == name).one_or_none()
+
+    def get_or_create_action(self, name):
+        m = self.action_to_model.get(name)
+        if m is not None:
+            return m
+
+        m = self.get_action_by_name(name)
+        if m is not None:
+            self.action_to_model[name] = m
+            return m
+
+        m = self.action_to_model[name] = Action(name=name)
+        self.session.add(m)
+        return m
+
+    def _create_drug_protein_interaction(self, drug_model, d):
+        """
+
+        :param dict d:
+        :return: DrugProteinInteraction
+        """
+        protein = self.get_or_create_protein(
+            uniprot_id=d['uniprot_id'],
+            species=self.get_or_create_species(d['organism']),
+            name=d.get('name'),
+            hgnc_id=d.get('hgnc_id')
+        )
+
+        dpi = DrugProteinInteraction(
+            drug=drug_model,
+            protein=protein,
+            known_action=(d['known_action'] == 'yes'),
+            actions=[self.get_or_create_action(name.strip().lower()) for name in d.get('actions', [])],
+            category=d['category']
+        )
+        self.session.add(dpi)
+        return dpi
+
     def populate(self, url=None):
         """Populates DrugBank
 
@@ -150,10 +234,15 @@ class Manager(AbstractManager):
                     for patent in drug['patents']
                 ],
                 xrefs=[
-                    Xref(**xref)
+                    DrugXref(**xref)
                     for xref in drug['xrefs']
                 ]
             )
+
+            drug_model.protein_interactions = [
+                self._create_drug_protein_interaction(drug_model, x)
+                for x in drug['protein_interactions']
+            ]
 
             self.session.add(drug_model)
 
@@ -237,7 +326,19 @@ class Manager(AbstractManager):
 
         :rtype: int
         """
-        return self._count_model(Xref)
+        return self._count_model(DrugXref)
+
+    def count_species(self):
+        return self._count_model(Species)
+
+    def count_proteins(self):
+        return self._count_model(Protein)
+
+    def count_actions(self):
+        return self._count_model(Action)
+
+    def count_drug_protein_interactions(self):
+        return self._count_model(DrugProteinInteraction)
 
     def summarize(self):
         """Summarizes the database
@@ -253,6 +354,10 @@ class Manager(AbstractManager):
             categories=self.count_categories(),
             patents=self.count_patents(),
             xrefs=self.count_xrefs(),
+            proteins=self.count_proteins(),
+            species=self.count_species(),
+            actions=self.count_actions(),
+            drug_protein_interactions=self.count_drug_protein_interactions(),
         )
 
     def _iterate_id_name(self):

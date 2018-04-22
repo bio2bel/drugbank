@@ -15,7 +15,7 @@ __all__ = [
     'Group',
     'Category',
     'Patent',
-    'Xref',
+    'DrugXref',
 ]
 
 Base = declarative_base()
@@ -31,7 +31,12 @@ DRUG_CATEGORY_TABLE_NAME = f'{TABLE_PREFIX}_drug_category'
 DRUG_GROUP_TABLE_NAME = f'{TABLE_PREFIX}_drug_group'
 PATENT_TABLE_NAME = f'{TABLE_PREFIX}_patent'
 DRUG_PATENT_TABLE_NAME = f'{TABLE_PREFIX}_drug_patent'
-XREF_TABLE_NAME = f'{TABLE_PREFIX}_xref'
+DRUG_XREF_TABLE_NAME = f'{TABLE_PREFIX}_drug_xref'
+SPECIES_TABLE_NAME = f'{TABLE_PREFIX}_species'
+PROTEIN_TABLE_NAME = f'{TABLE_PREFIX}_protein'
+ACTION_TABLE_NAME = f'{TABLE_PREFIX}_action'
+DRUG_PROTEIN_TABLE_NAME = f'{TABLE_PREFIX}_drug_protein'
+DRUG_PROTEIN_ACTION_TABLE_NAME = f'{TABLE_PREFIX}_drug_protein_action'
 
 drug_group = Table(
     DRUG_GROUP_TABLE_NAME,
@@ -52,6 +57,13 @@ drug_patent = Table(
     Base.metadata,
     Column('drug_id', Integer, ForeignKey(f'{DRUG_TABLE_NAME}.id'), primary_key=True),
     Column('patent_id', Integer, ForeignKey(f'{PATENT_TABLE_NAME}.id'), primary_key=True)
+)
+
+dpi_action = Table(
+    DRUG_PROTEIN_ACTION_TABLE_NAME,
+    Base.metadata,
+    Column('drug_protein_id', Integer, ForeignKey(f'{DRUG_PROTEIN_TABLE_NAME}.id'), primary_key=True),
+    Column('action_id', Integer, ForeignKey(f'{ACTION_TABLE_NAME}.id'), primary_key=True)
 )
 
 
@@ -84,9 +96,9 @@ class Drug(Base):
         return self.name
 
 
-class Xref(Base):
+class DrugXref(Base):
     """Represents a cross-reference to another database"""
-    __tablename__ = XREF_TABLE_NAME
+    __tablename__ = DRUG_XREF_TABLE_NAME
 
     id = Column(Integer, primary_key=True)
 
@@ -174,3 +186,56 @@ class Category(Base):
 
     def __repr__(self):
         return self.name
+
+
+class Species(Base):
+    __tablename__ = SPECIES_TABLE_NAME
+
+    id = Column(Integer, primary_key=True)
+    name = Column(String(255), unique=True, index=True, nullable=False)
+
+
+    def __repr__(self):
+        return self.name
+
+class Protein(Base):
+    """Represents a protein"""
+    __tablename__ = PROTEIN_TABLE_NAME
+
+    id = Column(Integer, primary_key=True)
+
+    species_id = Column(Integer, ForeignKey(f'{SPECIES_TABLE_NAME}.id'), nullable=False)
+    species = relationship(Species)
+
+    uniprot_id = Column(String(32))
+    uniprot_accession = Column(String(32))
+    name = Column(String(255))
+    hgnc_id = Column(String(32))
+
+    def __repr__(self):
+        return self.uniprot_id
+
+
+class Action(Base):
+    __tablename__ = ACTION_TABLE_NAME
+
+    id = Column(Integer, primary_key=True)
+    name = Column(String(255), unique=True, index=True, nullable=False)
+
+
+class DrugProteinInteraction(Base):
+    """Represents an ineraction between a drug and a protein"""
+    __tablename__ = DRUG_PROTEIN_TABLE_NAME
+
+    id = Column(Integer, primary_key=True)
+
+    drug_id = Column(Integer, ForeignKey(f'{DRUG_TABLE_NAME}.id'))
+    drug = relationship(Drug, backref=backref('protein_interactions'))
+
+    protein_id = Column(Integer, ForeignKey(f'{PROTEIN_TABLE_NAME}.id'))
+    protein = relationship(Protein, backref=backref('drug_interactions'))
+
+    category = Column(String(32), nullable=False)  # target, enzyme, etc...
+    known_action = Column(Boolean, nullable=False)
+
+    actions = relationship(Action, secondary=dpi_action, lazy='dynamic', backref=backref('drug_protein_interactions', lazy='dynamic'))
