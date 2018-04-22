@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 
-"""Database model for bio2bel_drugbank"""
+"""Database models for bio2bel_drugbank"""
 
 from sqlalchemy import Boolean, Column, Date, ForeignKey, Integer, String, Table, Text, and_
 from sqlalchemy.ext.declarative import declarative_base
@@ -14,6 +14,8 @@ __all__ = [
     'AtcCode',
     'Group',
     'Category',
+    'Patent',
+    'Xref',
 ]
 
 Base = declarative_base()

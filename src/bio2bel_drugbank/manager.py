@@ -12,6 +12,7 @@ log = logging.getLogger(__name__)
 
 
 class Manager(AbstractManager):
+    """Manager for Bio2BEL DrugBank"""
     module_name = MODULE_NAME
     flask_admin_models = [Drug, Alias, AtcCode, Category, Group, Type, Patent, Xref]
 
@@ -104,6 +105,10 @@ class Manager(AbstractManager):
         return 0 != self.count_drugs()
 
     def populate(self, url=None):
+        """Populates DrugBank
+
+        :param Optional[str] url: Path to the DrugBank XML
+        """
         root = get_xml_root(url=url)
 
         log.info('building models')
@@ -223,6 +228,10 @@ class Manager(AbstractManager):
         return self._count_model(Xref)
 
     def summarize(self):
+        """Summarizes the database
+
+        :rtype: dict[str,int]
+        """
         return dict(
             drugs=self.count_drugs(),
             types=self.count_types(),
