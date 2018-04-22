@@ -96,6 +96,13 @@ class Manager(AbstractManager):
         self.session.add(m)
         return m
 
+    def is_populated(self):
+        """Checks if the databse is populated by counting the drugs
+
+        :rtype: bool
+        """
+        return 0 != self.count_drugs()
+
     def populate(self, url=None):
         root = get_xml_root(url=url)
 
