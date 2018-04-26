@@ -11,15 +11,19 @@ from pybel.dsl import abundance, protein
 from .constants import MODULE_NAME
 
 __all__ = [
+    'Action',
     'Base',
     'Type',
     'Drug',
+    'DrugProteinInteraction',
     'Alias',
     'AtcCode',
     'Group',
     'Category',
     'Patent',
     'DrugXref',
+    'Protein',
+    'Species',
 ]
 
 Base = declarative_base()
