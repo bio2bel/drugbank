@@ -499,3 +499,33 @@ class Manager(AbstractManager):
             rv[drug_name].append(hgnc_id)
 
         return rv
+
+    def get_drug_to_hgnc_symbols(self):
+        """Gets a dictionary of drug names to HGNC gene symbols.
+
+        Requires the installation of ``bio2bel_hgnc``
+
+        :rtype: dict[str,list[str]]
+        :raises: ImportError
+        """
+        import bio2bel_hgnc
+        hgnc_manager = bio2bel_hgnc.Manager()
+        if not hgnc_manager.is_populated():
+            hgnc_manager.populate()
+
+        hgnc_id_symbol_mapping = hgnc_manager.build_hgnc_id_symbol_mapping()
+        drug_to_hgnc_ids = self.get_drug_to_hgnc_ids()
+
+        rv = defaultdict(list)
+
+        for drug, hgnc_ids in drug_to_hgnc_ids.items():
+            for hgnc_id in hgnc_ids:
+                hgnc_symbol = hgnc_id_symbol_mapping.get(hgnc_id)
+
+                if hgnc_symbol is None:
+                    log.warning('could not map HGNC identifier: %s', hgnc_id)
+                    continue
+
+                rv[drug].append(hgnc_symbol)
+
+        return rv
