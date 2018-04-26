@@ -3,8 +3,9 @@
 """Defines the Bio2BEL DrugBank manager."""
 
 import logging
-
 import time
+from collections import defaultdict
+
 from tqdm import tqdm
 
 from bio2bel import AbstractManager
@@ -477,3 +478,24 @@ class Manager(AbstractManager):
             dpi.add_to_graph(graph)
 
         return graph
+
+    def get_drug_to_hgnc_ids(self):
+        """Gets a dictionary of drug names to lists HGNC identifiers (not prepended with HGNC:)
+
+        :rtype: dict[str,list[str]]
+        """
+        rv = defaultdict(list)
+
+        for dpi in tqdm(self.list_drug_protein_interactions(),
+                        total=self.count_drug_protein_interactions(),
+                        desc='getting DTIs'):
+
+            if dpi.protein.hgnc_id is None:
+                continue
+
+            drug_name = dpi.drug.name
+            hgnc_id = dpi.protein.hgnc_id[len('HGNC:'):]
+
+            rv[drug_name].append(hgnc_id)
+
+        return rv
