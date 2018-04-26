@@ -282,6 +282,13 @@ class Manager(AbstractManager):
         """
         return self._count_model(Drug)
 
+    def list_drugs(self):
+        """List all drugs in the database
+
+        :rtype: list[Drug]
+        """
+        return self._list_model(Drug)
+
     def count_types(self):
         """Count the number of types in the database
 
@@ -357,6 +364,9 @@ class Manager(AbstractManager):
 
     def count_proteins(self):
         return self._count_model(Protein)
+
+    def list_proteins(self):
+        return self._list_model(Protein)
 
     def count_actions(self):
         return self._count_model(Action)
