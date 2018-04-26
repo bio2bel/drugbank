@@ -2,7 +2,9 @@
 
 """Defines the Bio2BEL DrugBank manager."""
 
+import json
 import logging
+import os
 import time
 from collections import defaultdict
 
@@ -11,7 +13,7 @@ from tqdm import tqdm
 from bio2bel import AbstractManager
 from pybel import BELGraph
 from pybel.manager.models import Namespace, NamespaceEntry
-from .constants import MODULE_NAME
+from .constants import DATA_DIR, MODULE_NAME
 from .models import (
     Action, Alias, AtcCode, Base, Category, Drug, DrugProteinInteraction, DrugXref, Group, Patent, Protein, Species,
     Type, drug_category, drug_group,
@@ -21,6 +23,9 @@ from .parser import extract_drug_info, get_xml_root
 __all__ = ['Manager']
 
 log = logging.getLogger(__name__)
+
+_dti_ids_cache_path = os.path.join(DATA_DIR, 'drug_to_gene_ids.json')
+_dti_symbols_cache_path = os.path.join(DATA_DIR, 'drug_to_gene_symbols.json')
 
 
 class Manager(AbstractManager):
@@ -489,8 +494,8 @@ class Manager(AbstractManager):
 
         return graph
 
-    def get_drug_to_hgnc_ids(self):
-        """Gets a dictionary of drug names to lists HGNC identifiers (not prepended with HGNC:)
+    def get_hgnc_id_to_drugs(self):
+        """Gets a dictionary of HGNC identifiers (not prepended with HGNC:) to list of drug names
 
         :rtype: dict[str,list[str]]
         """
@@ -506,11 +511,42 @@ class Manager(AbstractManager):
             drug_name = dpi.drug.name
             hgnc_id = dpi.protein.hgnc_id[len('HGNC:'):]
 
-            rv[drug_name].append(hgnc_id)
+            rv[hgnc_id].append(drug_name)
 
         return rv
 
-    def get_drug_to_hgnc_symbols(self):
+    def get_drug_to_hgnc_ids(self, cache=True, recalculate=False):
+        """Gets a dictionary of drug names to lists HGNC identifiers (not prepended with HGNC:)
+
+        :rtype: dict[str,list[str]]
+        """
+        if cache and not recalculate and os.path.exists(_dti_ids_cache_path):
+            log.info('loading cached DTIs')
+            with open(_dti_ids_cache_path) as file:
+                return json.load(file)
+
+        rv = defaultdict(list)
+
+        for dpi in tqdm(self.list_drug_protein_interactions(),
+                        total=self.count_drug_protein_interactions(),
+                        desc='getting DTIs'):
+
+            if dpi.protein.hgnc_id is None:
+                continue
+
+            drug_name = dpi.drug.name
+            hgnc_id = dpi.protein.hgnc_id[len('HGNC:'):]
+
+            rv[drug_name].append(hgnc_id)
+
+        if cache:
+            with open(_dti_ids_cache_path, 'w') as file:
+                log.info('dumping cached DTIs')
+                json.dump(rv, file)
+
+        return rv
+
+    def get_drug_to_hgnc_symbols(self, cache=True, recalculate=False):
         """Gets a dictionary of drug names to HGNC gene symbols.
 
         Requires the installation of ``bio2bel_hgnc``
@@ -518,6 +554,11 @@ class Manager(AbstractManager):
         :rtype: dict[str,list[str]]
         :raises: ImportError
         """
+        if cache and not recalculate and os.path.exists(_dti_symbols_cache_path):
+            log.debug('loading cached DTIs with gene symbols')
+            with open(_dti_symbols_cache_path) as file:
+                return json.load(file)
+
         import bio2bel_hgnc
         hgnc_manager = bio2bel_hgnc.Manager()
         if not hgnc_manager.is_populated():
@@ -537,5 +578,10 @@ class Manager(AbstractManager):
                     continue
 
                 rv[drug].append(hgnc_symbol)
+
+        if cache:
+            with open(_dti_symbols_cache_path, 'w') as file:
+                log.info('dumping cached DTIs')
+                json.dump(rv, file)
 
         return rv
