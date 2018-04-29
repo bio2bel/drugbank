@@ -7,13 +7,14 @@ import logging
 import os
 import time
 from collections import defaultdict
-
-from tqdm import tqdm
 from typing import List
 
 from bio2bel import AbstractManager
 from pybel import BELGraph
 from pybel.manager.models import Namespace, NamespaceEntry
+from sqlalchemy import func
+from tqdm import tqdm
+
 from .constants import DATA_DIR, MODULE_NAME
 from .models import (
     Action, Alias, AtcCode, Base, Category, Drug, DrugProteinInteraction, DrugXref, Group, Patent, Protein, Species,
@@ -365,7 +366,13 @@ class Manager(AbstractManager):
         """
         return self._count_model(DrugXref)
 
-    def count_species(self):
+    def get_xrefs_by_resource(self, resource) -> List[DrugXref]:
+        return self.session.query(DrugXref).filter(DrugXref.resource == resource).all()
+
+    def summarize_xrefs(self):
+        return self.session.query(DrugXref.resource, func.count(DrugXref.resource)).group_by(DrugXref.resource).all()
+
+    def count_species(self) -> int:
         return self._count_model(Species)
 
     def count_proteins(self) -> int:
