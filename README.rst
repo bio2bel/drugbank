@@ -1,5 +1,5 @@
-Bio2BEL DrugBank |build| |coverage| |documentation|
-===================================================
+Bio2BEL DrugBank |build| |coverage| |documentation| |zenodo|
+============================================================
 Converts DrugBank 5.0 to BEL.
 
 Installation |pypi_version| |python_versions| |pypi_license|
@@ -64,3 +64,7 @@ Citations
 
 .. |pypi_license| image:: https://img.shields.io/pypi/l/bio2bel_drugbank.svg
     :alt: MIT License
+
+.. |zenodo| image:: https://zenodo.org/badge/DOI/10.5281/zenodo.1243727.svg
+    :target: https://doi.org/10.5281/zenodo.1243727
+    :alt: Zenodo DOI
