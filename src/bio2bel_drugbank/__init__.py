@@ -41,7 +41,7 @@ from .models import *
 
 __all__ = manager.__all__ + models.__all__
 
-__version__ = '0.0.1-dev'
+__version__ = '0.0.1'
 
 __title__ = 'bio2bel_drugbank'
 __description__ = "A package for converting DrugBank to BEL"
