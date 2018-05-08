@@ -7,12 +7,14 @@ import logging
 import os
 import time
 from collections import defaultdict
-
-from tqdm import tqdm
+from typing import List
 
 from bio2bel import AbstractManager
 from pybel import BELGraph
 from pybel.manager.models import Namespace, NamespaceEntry
+from sqlalchemy import func
+from tqdm import tqdm
+
 from .constants import DATA_DIR, MODULE_NAME
 from .models import (
     Action, Alias, AtcCode, Base, Category, Drug, DrugProteinInteraction, DrugXref, Group, Patent, Protein, Species,
@@ -301,7 +303,7 @@ class Manager(AbstractManager):
         """
         return self._count_model(Type)
 
-    def count_alises(self):
+    def count_aliases(self):
         """Count the number of aliases in the database
 
         :rtype: int
@@ -329,21 +331,21 @@ class Manager(AbstractManager):
         """
         return self._count_model(Category)
 
-    def count_drugs_categories(self):
+    def count_drugs_categories(self) -> int:
         """Count the number of drug-category relations in the database
 
         :rtype: int
         """
         return self._count_model(drug_category)
 
-    def count_drugs_groups(self):
+    def count_drugs_groups(self) -> int:
         """Count the number of drug-group relations in the database
 
         :rtype: int
         """
         return self._count_model(drug_group)
 
-    def count_patents(self):
+    def count_patents(self) -> int:
         """Count the number of patents in the database
 
         :rtype: int
@@ -357,29 +359,35 @@ class Manager(AbstractManager):
         """
         return self._list_model(Patent)
 
-    def count_xrefs(self):
+    def count_xrefs(self) -> int:
         """Count the number of cross-references in the database
 
         :rtype: int
         """
         return self._count_model(DrugXref)
 
-    def count_species(self):
+    def get_xrefs_by_resource(self, resource) -> List[DrugXref]:
+        return self.session.query(DrugXref).filter(DrugXref.resource == resource).all()
+
+    def summarize_xrefs(self):
+        return self.session.query(DrugXref.resource, func.count(DrugXref.resource)).group_by(DrugXref.resource).all()
+
+    def count_species(self) -> int:
         return self._count_model(Species)
 
-    def count_proteins(self):
+    def count_proteins(self) -> int:
         return self._count_model(Protein)
 
-    def list_proteins(self):
+    def list_proteins(self) -> List[Protein]:
         return self._list_model(Protein)
 
-    def count_actions(self):
+    def count_actions(self) -> int:
         return self._count_model(Action)
 
     def count_drug_protein_interactions(self):
         return self._count_model(DrugProteinInteraction)
 
-    def list_drug_protein_interactions(self):
+    def list_drug_protein_interactions(self) -> List[DrugProteinInteraction]:
         """List drug-protein interactions
 
         :rtype: list[DrugProteinInteraction]
@@ -394,7 +402,7 @@ class Manager(AbstractManager):
         return dict(
             drugs=self.count_drugs(),
             types=self.count_types(),
-            aliases=self.count_alises(),
+            aliases=self.count_aliases(),
             atc_codes=self.count_atc_codes(),
             groups=self.count_groups(),
             categories=self.count_categories(),
