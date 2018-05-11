@@ -20,8 +20,8 @@ inchi_template = f"{ns}calculated-properties/{ns}property[{ns}kind='InChI']/{ns}
 pubmed_re = re.compile('pubmed/([0-9]+)')
 
 
-def get_path():
-    return DRUGBANK_PATH
+def get_path(url=None):
+    return url or DRUGBANK_PATH
 
 
 def get_xml_root(url=None):
@@ -30,9 +30,11 @@ def get_xml_root(url=None):
     :param Optional[str] url: A custom URL for drugbank XML file
     :return:
     """
-    log.info('parsing drugbank')
+    url = get_path(url=url)
+
+    log.info('parsing drugbank at %s', url)
     t = time.time()
-    tree = ElementTree.parse(url or DRUGBANK_PATH)
+    tree = ElementTree.parse(url)
     log.info('parsed drugbank in %.2f seconds', time.time() - t)
 
     return tree.getroot()

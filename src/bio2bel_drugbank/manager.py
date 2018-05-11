@@ -233,7 +233,7 @@ class Manager(AbstractManager):
 
         log.info('building models')
 
-        for drug_xml in tqdm(root):
+        for drug_xml in tqdm(root, desc='Drugs'):
             drug = extract_drug_info(drug_xml)
 
             drug_model = Drug(
