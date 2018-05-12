@@ -9,12 +9,13 @@ import time
 from collections import defaultdict
 from typing import List
 
-from bio2bel import AbstractManager
-from pybel import BELGraph
-from pybel.manager.models import Namespace, NamespaceEntry
+import bio2bel_hgnc
 from sqlalchemy import func
 from tqdm import tqdm
 
+from bio2bel.namespace_manager import NamespaceManagerMixin
+from pybel import BELGraph
+from pybel.manager.models import Namespace, NamespaceEntry
 from .constants import DATA_DIR, MODULE_NAME
 from .models import (
     Action, Alias, AtcCode, Base, Category, Drug, DrugProteinInteraction, DrugXref, Group, Patent, Protein, Species,
@@ -30,12 +31,14 @@ _dti_ids_cache_path = os.path.join(DATA_DIR, 'drug_to_gene_ids.json')
 _dti_symbols_cache_path = os.path.join(DATA_DIR, 'drug_to_gene_symbols.json')
 
 
-class Manager(AbstractManager):
+class Manager(NamespaceManagerMixin):
     """Manager for Bio2BEL DrugBank."""
 
     module_name = MODULE_NAME
     flask_admin_models = [Drug, Alias, AtcCode, Category, Group, Type, Patent, DrugXref, Species, Protein,
                           DrugProteinInteraction, Action]
+
+    namespace_model = Drug
 
     def __init__(self, connection=None):
         """
@@ -414,88 +417,28 @@ class Manager(AbstractManager):
             drug_protein_interactions=self.count_drug_protein_interactions(),
         )
 
-    def _iterate_id_name(self):
-        return tqdm(self.session.query(Drug.drugbank_id, Drug.name), total=self.count_drugs())
+    @staticmethod
+    def _get_identifier(drug: Drug):
+        return drug.drugbank_id
 
-    def _get_namespace_entries(self):
-        return [
-            NamespaceEntry(encoding='A', identifier=identifier, name=name)
-            for identifier, name in self._iterate_id_name()
-        ]
-
-    def _make_namespace(self):
-        """
-        :rtype: pybel.manager.models.Namespace
-        """
-        entries = self._get_namespace_entries()
-        _namespace_keyword = self._get_namespace_keyword()
-        ns = Namespace(
-            name=_namespace_keyword,
-            keyword=_namespace_keyword,
-            url=_namespace_keyword,
-            version=str(time.asctime()),
-            entries=entries,
-        )
-        self.session.add(ns)
-
-        t = time.time()
-        log.info('committing models')
-        self.session.commit()
-        log.info('committed models in %.2f seconds', time.time() - t)
-
-        return ns
-
-    def _update_namespace(self, ns):
-        """
-        :param pybel.manager.models.Namespace ns:
-        """
-        old = {term.identifier for term in ns.entries}
-        new_count = 0
-
-        for identifier, name in self._iterate_id_name():
-            if identifier in old:
-                continue
-
-            new_count += 1
-            entry = NamespaceEntry(encoding='A', identifier=identifier, name=name, namespace=ns)
-            self.session.add(entry)
-
-        t = time.time()
-        log.info('got %d new entries. committing models', new_count)
-        self.session.commit()
-        log.info('committed models in %.2f seconds', time.time() - t)
-
-    def upload_bel_namespace(self):
-        """
-        :rtype: pybel.manager.models.Namespace
-        """
-        if not self.is_populated():
-            self.populate()
-
-        ns = self._get_default_namespace()
-
-        if ns is None:
-            return self._make_namespace()
-
-        self._update_namespace(ns)
-
-        return ns
+    def _create_namespace_entry_from_model(self, model: Drug, namespace: Namespace):
+        return NamespaceEntry(encoding='A', name=model.name, identifier=model.drugbank_id, namespace=namespace)
 
     def to_bel(self):
         graph = BELGraph(
             name='DrugBank',
             version='5.1',
         )
-        namespace = self.upload_bel_namespace()
 
-        graph.namespace_url[namespace.keyword] = namespace.url
+        drugbank_namespace = self.upload_bel_namespace()
+        graph.namespace_url[drugbank_namespace.keyword] = drugbank_namespace.url
 
-        import bio2bel_hgnc
         hgnc_manager = bio2bel_hgnc.Manager(connection=self.connection)
         hgnc_namespace = hgnc_manager.upload_bel_namespace()
         graph.namespace_url[hgnc_namespace.keyword] = hgnc_namespace.url
 
-        for dpi in tqdm(self.list_drug_protein_interactions(), total=self.count_drug_protein_interactions()):
+        for dpi in tqdm(self.list_drug_protein_interactions(), total=self.count_drug_protein_interactions(),
+                        desc='Mapping drug-protein interactions to BEL'):
             if dpi.protein.hgnc_id is None:
                 continue
             dpi.add_to_graph(graph)
@@ -567,8 +510,7 @@ class Manager(AbstractManager):
             with open(_dti_symbols_cache_path) as file:
                 return json.load(file)
 
-        import bio2bel_hgnc
-        hgnc_manager = bio2bel_hgnc.Manager()
+        hgnc_manager = bio2bel_hgnc.Manager(connection=self.connection)
         if not hgnc_manager.is_populated():
             hgnc_manager.populate()
 
