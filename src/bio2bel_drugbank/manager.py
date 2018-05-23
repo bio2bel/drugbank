@@ -84,6 +84,9 @@ class Manager(NamespaceManagerMixin):
         self.session.add(m)
         return m
 
+    def list_groups(self) -> List[Group]:
+        return self._list_model(Group)
+
     def get_group_by_name(self, name):
         """Gets a Group by name."""
         return self.session.query(Group).filter(Group.name == name).one_or_none()
