@@ -2,24 +2,24 @@
 
 """Defines the Bio2BEL DrugBank manager."""
 
+from collections import defaultdict
+
+import bio2bel_hgnc
 import json
 import logging
 import os
 import time
-from collections import defaultdict
-from typing import List
-
-import bio2bel_hgnc
 from sqlalchemy import func
 from tqdm import tqdm
+from typing import List
 
 from bio2bel.namespace_manager import NamespaceManagerMixin
 from pybel import BELGraph
 from pybel.manager.models import Namespace, NamespaceEntry
 from .constants import DATA_DIR, MODULE_NAME
 from .models import (
-    Action, Alias, AtcCode, Base, Category, Drug, DrugProteinInteraction, DrugXref, Group, Patent, Protein, Species,
-    Type, drug_category, drug_group,
+    Action, Alias, Article, AtcCode, Base, Category, Drug, DrugProteinInteraction, DrugXref, Group, Patent, Protein,
+    Species, Type, drug_category, drug_group,
 )
 from .parser import extract_drug_info, get_xml_root
 
@@ -52,6 +52,7 @@ class Manager(NamespaceManagerMixin):
         self.patent_to_model = {}
         self.species_to_model = {}
         self.action_to_model = {}
+        self.pmid_to_model = {}
         self.uniprot_id_to_protein = {}
 
     @property
@@ -207,6 +208,23 @@ class Manager(NamespaceManagerMixin):
         self.session.add(m)
         return m
 
+    def get_article_by_pmid(self, pubmed_id: str):
+        return self.session.query(Article).filter(Article.pubmed_id == pubmed_id).one_or_none()
+
+    def get_or_create_article(self, pubmed_id) -> Article:
+        m = self.pmid_to_model.get(pubmed_id)
+        if m is not None:
+            return m
+
+        m = self.get_article_by_pmid(pubmed_id)
+        if m is not None:
+            self.pmid_to_model[pubmed_id] = m
+            return m
+
+        m = self.pmid_to_model[pubmed_id] = Article(pubmed_id=pubmed_id)
+        self.session.add(m)
+        return m
+
     def _create_drug_protein_interaction(self, drug_model, d):
         """
 
@@ -225,7 +243,8 @@ class Manager(NamespaceManagerMixin):
             protein=protein,
             known_action=(d['known_action'] == 'yes'),
             actions=[self.get_or_create_action(name.strip().lower()) for name in d.get('actions', [])],
-            category=d['category']
+            articles=[self.get_or_create_article(pubmed_id) for pubmed_id in d.get('articles', [])],
+            category=d['category'],
         )
         self.session.add(dpi)
         return dpi
@@ -399,6 +418,9 @@ class Manager(NamespaceManagerMixin):
         :rtype: list[DrugProteinInteraction]
         """
         return self._list_model(DrugProteinInteraction)
+
+    def count_articles(self) -> int:
+        return self._count_model(Article)
 
     def summarize(self):
         """Summarizes the database

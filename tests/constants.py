@@ -18,6 +18,8 @@ test_xml_path = os.path.join(resources_path, 'test.xml')
 class PopulatedTemporaryCacheClassMixin(make_temporary_cache_class_mixin(Manager)):
     """Create a test suite that has a populated database."""
 
+    manager: Manager
+
     @classmethod
     def populate(cls):
         """Override the populate hook."""

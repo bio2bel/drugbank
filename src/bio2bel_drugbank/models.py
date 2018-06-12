@@ -24,6 +24,7 @@ __all__ = [
     'DrugXref',
     'Protein',
     'Species',
+    'Article',
 ]
 
 Base = declarative_base()
@@ -44,6 +45,8 @@ PROTEIN_TABLE_NAME = f'{MODULE_NAME}_protein'
 ACTION_TABLE_NAME = f'{MODULE_NAME}_action'
 DRUG_PROTEIN_TABLE_NAME = f'{MODULE_NAME}_drug_protein'
 DRUG_PROTEIN_ACTION_TABLE_NAME = f'{MODULE_NAME}_drug_protein_action'
+ARTICLE_TABLE_NAME = f'{MODULE_NAME}_article'
+DRUG_PROTEIN_ARTICLE_TABLE_NAME = f'{MODULE_NAME}_drug_protein_article'
 
 drug_group = Table(
     DRUG_GROUP_TABLE_NAME,
@@ -71,6 +74,13 @@ dpi_action = Table(
     Base.metadata,
     Column('drug_protein_id', Integer, ForeignKey(f'{DRUG_PROTEIN_TABLE_NAME}.id'), primary_key=True),
     Column('action_id', Integer, ForeignKey(f'{ACTION_TABLE_NAME}.id'), primary_key=True)
+)
+
+dpi_article = Table(
+    DRUG_PROTEIN_ARTICLE_TABLE_NAME,
+    Base.metadata,
+    Column('drug_protein_id', Integer, ForeignKey(f'{DRUG_PROTEIN_TABLE_NAME}.id'), primary_key=True),
+    Column('article_id', Integer, ForeignKey(f'{ARTICLE_TABLE_NAME}.id'), primary_key=True)
 )
 
 
@@ -247,6 +257,15 @@ class Action(Base):
     name = Column(String(255), unique=True, index=True, nullable=False)
 
 
+class Article(Base):
+    """Represents an article in PubMed."""
+
+    __tablename__ = ARTICLE_TABLE_NAME
+
+    id = Column(Integer, primary_key=True)
+    pubmed_id = Column(String, unique=True, nullable=False, index=True)
+
+
 class DrugProteinInteraction(Base):
     """Represents an interaction between a drug and a protein."""
     __tablename__ = DRUG_PROTEIN_TABLE_NAME
@@ -265,6 +284,9 @@ class DrugProteinInteraction(Base):
     actions = relationship(Action, secondary=dpi_action, lazy='dynamic',
                            backref=backref('drug_protein_interactions', lazy='dynamic'))
 
+    articles = relationship(Article, secondary=dpi_article, lazy='dynamic',
+                            backref=backref('drug_protein_interactions', lazy='dynamic'))
+
     def add_to_graph(self, graph):
         """Adds this interaction to the graph
 
@@ -273,10 +295,15 @@ class DrugProteinInteraction(Base):
         :rtype: str
         """
         # TODO update implementation to use actions
-        return graph.add_qualified_edge(
-            self.drug.as_bel(),
-            self.protein.as_bel(),
-            relation=ASSOCIATION,
-            citation='29126136',
-            evidence='From DrugBank',
-        )
+
+        drug_bel = self.drug.as_bel()
+        protein_bel = self.protein.as_bel()
+
+        for article in self.articles:
+            return graph.add_qualified_edge(
+                drug_bel,
+                protein_bel,
+                relation=ASSOCIATION,
+                citation=article.pubmed_id,
+                evidence='From DrugBank',
+            )

@@ -2,12 +2,12 @@
 
 
 import itertools as itt
+
 import logging
 import re
+import time
 from datetime import datetime
 from xml.etree import ElementTree
-
-import time
 
 from .constants import DRUGBANK_PATH
 
@@ -132,7 +132,14 @@ def extract_protein_info(category, protein):
         'organism': protein.findtext(f'{ns}organism'),
         'known_action': protein.findtext(f'{ns}known-action'),
         'name': protein.findtext(f'{ns}name'),
-        'actions': [action.text for action in protein.findall(f'{ns}actions/{ns}action')]
+        'actions': [
+            action.text
+            for action in protein.findall(f'{ns}actions/{ns}action')
+        ],
+        'articles': [
+            pubmed_element.text
+            for pubmed_element in protein.findall(f'{ns}references/{ns}articles/{ns}article/{ns}pubmed-id')
+        ]
     }
 
     # TODO generalize to all cross references?
@@ -146,9 +153,5 @@ def extract_protein_info(category, protein):
         f"{ns}polypeptide/{ns}external-identifiers/{ns}external-identifier[{ns}resource='HUGO Gene Nomenclature Committee (HGNC)']/{ns}identifier")]
     if len(hgnc_ids) == 1:
         row['hgnc_id'] = hgnc_ids[0]
-
-    # TODO this is wrong...
-    # ref_text = protein.findtext(f"{ns}references[@format='textile']")
-    # row['pubmed_ids'] = list(pubmed_re.findall(ref_text)) if ref_text is not None else []
 
     return row
