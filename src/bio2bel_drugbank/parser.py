@@ -139,6 +139,7 @@ def extract_protein_info(category, protein):
         'articles': [
             pubmed_element.text
             for pubmed_element in protein.findall(f'{ns}references/{ns}articles/{ns}article/{ns}pubmed-id')
+            if pubmed_element.text
         ]
     }
 
