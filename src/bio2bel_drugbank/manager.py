@@ -36,7 +36,7 @@ class Manager(NamespaceManagerMixin):
 
     module_name = MODULE_NAME
     flask_admin_models = [Drug, Alias, AtcCode, Category, Group, Type, Patent, DrugXref, Species, Protein,
-                          DrugProteinInteraction, Action]
+                          DrugProteinInteraction, Action, Article]
 
     namespace_model = Drug
 
