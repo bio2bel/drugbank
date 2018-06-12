@@ -263,7 +263,7 @@ class Article(Base):
     __tablename__ = ARTICLE_TABLE_NAME
 
     id = Column(Integer, primary_key=True)
-    pubmed_id = Column(String, unique=True, nullable=False, index=True)
+    pubmed_id = Column(String(255), unique=True, nullable=False, index=True)
 
 
 class DrugProteinInteraction(Base):
