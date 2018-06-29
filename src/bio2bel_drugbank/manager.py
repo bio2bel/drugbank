@@ -2,20 +2,20 @@
 
 """Defines the Bio2BEL DrugBank manager."""
 
-from collections import defaultdict
-
-import bio2bel_hgnc
 import json
 import logging
 import os
 import time
-from sqlalchemy import func
-from tqdm import tqdm
+from collections import defaultdict
 from typing import List
 
-from bio2bel.namespace_manager import NamespaceManagerMixin
 from pybel import BELGraph
 from pybel.manager.models import Namespace, NamespaceEntry
+from sqlalchemy import func
+from tqdm import tqdm
+
+import bio2bel_hgnc
+from bio2bel.namespace_manager import NamespaceManagerMixin
 from .constants import DATA_DIR, MODULE_NAME
 from .models import (
     Action, Alias, Article, AtcCode, Base, Category, Drug, DrugProteinInteraction, DrugXref, Group, Patent, Protein,
@@ -173,6 +173,9 @@ class Manager(NamespaceManagerMixin):
 
     def get_protein_by_uniprot_id(self, uniprot_id):
         return self.session.query(Protein).filter(Protein.uniprot_id == uniprot_id).one_or_none()
+
+    def get_protein_by_hgnc_id(self, hgnc_id):
+        return self.session.query(Protein).filter(Protein.hgnc_id == hgnc_id).one_or_none()
 
     def get_or_create_protein(self, uniprot_id, **kwargs):
         m = self.uniprot_id_to_protein.get(uniprot_id)
@@ -560,3 +563,21 @@ class Manager(NamespaceManagerMixin):
                 json.dump(rv, file)
 
         return rv
+
+    def get_interactions_by_hgnc_id(self, hgnc_id):
+        """Gets the drug targets for a given HGNC identifier.
+
+        :param str hgnc_id: HGNC identifier
+        :rtype: Optional[list[DrugProteinInteraction]]
+        """
+        protein = self.get_protein_by_hgnc_id(hgnc_id)
+
+        if not protein:
+            return None
+
+        return [
+            interaction
+            for interaction in protein.drug_interactions
+        ]
+
+    # TODO: ADD enrich graph methods
