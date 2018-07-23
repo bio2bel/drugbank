@@ -5,17 +5,17 @@
 import json
 import logging
 import os
-import time
 from collections import defaultdict
-from typing import List
-
-from pybel import BELGraph
-from pybel.manager.models import Namespace, NamespaceEntry
-from sqlalchemy import func
-from tqdm import tqdm
 
 import bio2bel_hgnc
+import time
+from sqlalchemy import func
+from tqdm import tqdm
+from typing import List, Optional
+
 from bio2bel.namespace_manager import NamespaceManagerMixin
+from pybel import BELGraph
+from pybel.manager.models import Namespace, NamespaceEntry
 from .constants import DATA_DIR, MODULE_NAME
 from .models import (
     Action, Alias, Article, AtcCode, Base, Category, Drug, DrugProteinInteraction, DrugXref, Group, Patent, Protein,
@@ -59,19 +59,15 @@ class Manager(NamespaceManagerMixin):
     def _base(self):
         return Base
 
-    def get_type_by_name(self, name):
-        """Gets a Type by name.
+    def get_type_by_name(self, name: str) -> Optional[Type]:
+        """Get a Type by name.
 
         :param str name:
-        :rtype: Optional[Type]
         """
         return self.session.query(Type).filter(Type.name == name).one_or_none()
 
-    def get_or_create_type(self, name):
-        """Gets or creates a Type by name.
-
-        :rtype: Type
-        """
+    def get_or_create_type(self, name: str) -> Type:
+        """Get or create a Type by name."""
         m = self.type_to_model.get(name)
         if m is not None:
             return m
@@ -88,12 +84,12 @@ class Manager(NamespaceManagerMixin):
     def list_groups(self) -> List[Group]:
         return self._list_model(Group)
 
-    def get_group_by_name(self, name):
-        """Gets a Group by name."""
+    def get_group_by_name(self, name: str) -> Optional[Group]:
+        """Get a Group by name."""
         return self.session.query(Group).filter(Group.name == name).one_or_none()
 
-    def get_or_create_group(self, name):
-        """Gets or creates a Group by name."""
+    def get_or_create_group(self, name: str) -> Group:
+        """Get or create a Group by name."""
         m = self.group_to_model.get(name)
         if m is not None:
             return m
@@ -107,12 +103,12 @@ class Manager(NamespaceManagerMixin):
         self.session.add(m)
         return m
 
-    def get_species_by_name(self, name):
-        """Gets a Species by name."""
+    def get_species_by_name(self, name: str) -> Optional[Species]:
+        """Get a Species by name."""
         return self.session.query(Species).filter(Species.name == name).one_or_none()
 
-    def get_or_create_species(self, name):
-        """Gets or creates a Species by name."""
+    def get_or_create_species(self, name: str) -> Species:
+        """Get or create a Species by name."""
         m = self.species_to_model.get(name)
         if m is not None:
             return m
@@ -126,11 +122,11 @@ class Manager(NamespaceManagerMixin):
         self.session.add(m)
         return m
 
-    def get_category_by_name(self, name):
-        """Gets a Category by name."""
+    def get_category_by_name(self, name: str) -> Optional[Category]:
+        """Get a Category by name."""
         return self.session.query(Category).filter(Category.name == name).one_or_none()
 
-    def get_or_create_category(self, name, **kwargs):
+    def get_or_create_category(self, name: str, **kwargs) -> Category:
         """Gets or creates a Category by name."""
         m = self.category_to_model.get(name)
         if m is not None:
@@ -145,7 +141,7 @@ class Manager(NamespaceManagerMixin):
         self.session.add(m)
         return m
 
-    def get_or_create_patent(self, country, patent_id, **kwargs):
+    def get_or_create_patent(self, country: str, patent_id: str, **kwargs) -> Patent:
         """Gets or creates a Patent."""
         m = self.patent_to_model.get((country, patent_id))
         if m is not None:
@@ -164,20 +160,17 @@ class Manager(NamespaceManagerMixin):
         self.session.add(m)
         return m
 
-    def is_populated(self):
-        """Checks if the database is populated by counting the drugs.
-
-        :rtype: bool
-        """
+    def is_populated(self) -> bool:
+        """Check if the database is populated by counting the drugs."""
         return 0 != self.count_drugs()
 
-    def get_protein_by_uniprot_id(self, uniprot_id):
+    def get_protein_by_uniprot_id(self, uniprot_id: str) -> Optional[Protein]:
         return self.session.query(Protein).filter(Protein.uniprot_id == uniprot_id).one_or_none()
 
     def get_protein_by_hgnc_id(self, hgnc_id):
         return self.session.query(Protein).filter(Protein.hgnc_id == hgnc_id).one_or_none()
 
-    def get_or_create_protein(self, uniprot_id, **kwargs):
+    def get_or_create_protein(self, uniprot_id: str, **kwargs) -> Protein:
         m = self.uniprot_id_to_protein.get(uniprot_id)
         if m is not None:
             return m
@@ -194,10 +187,10 @@ class Manager(NamespaceManagerMixin):
         self.session.add(m)
         return m
 
-    def get_action_by_name(self, name):
+    def get_action_by_name(self, name: str) -> Optional[Action]:
         return self.session.query(Action).filter(Action.name == name).one_or_none()
 
-    def get_or_create_action(self, name):
+    def get_or_create_action(self, name: str) -> Action:
         m = self.action_to_model.get(name)
         if m is not None:
             return m
@@ -461,7 +454,7 @@ class Manager(NamespaceManagerMixin):
         drugbank_namespace = self.upload_bel_namespace()
         graph.namespace_url[drugbank_namespace.keyword] = drugbank_namespace.url
 
-        hgnc_manager = bio2bel_hgnc.Manager(connection=self.connection)
+        hgnc_manager = bio2bel_hgnc.Manager.from_connection(self.connection)
         hgnc_namespace = hgnc_manager.upload_bel_namespace()
         graph.namespace_url[hgnc_namespace.keyword] = hgnc_namespace.url
 
@@ -538,7 +531,7 @@ class Manager(NamespaceManagerMixin):
             with open(_dti_symbols_cache_path) as file:
                 return json.load(file)
 
-        hgnc_manager = bio2bel_hgnc.Manager(connection=self.connection)
+        hgnc_manager = bio2bel_hgnc.Manager.from_connection(self.connection)
         if not hgnc_manager.is_populated():
             hgnc_manager.populate()
 
