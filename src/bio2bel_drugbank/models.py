@@ -25,6 +25,9 @@ __all__ = [
     'Protein',
     'Species',
     'Article',
+    'drug_category',
+    'drug_group',
+    'drug_patent',
 ]
 
 Base = declarative_base()
