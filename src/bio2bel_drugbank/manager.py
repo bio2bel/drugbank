@@ -464,9 +464,7 @@ class Manager(AbstractManager, FlaskMixin, BELManagerMixin, BELNamespaceManagerM
         hgnc_namespace = hgnc_manager.upload_bel_namespace()
         graph.namespace_url[hgnc_namespace.keyword] = hgnc_namespace.url
 
-        dpis = self.session.query(DrugProteinInteraction).limit(5)
-        # dpis = self.list_drug_protein_interactions()
-
+        dpis = self.list_drug_protein_interactions()
         for dpi in tqdm(dpis, total=self.count_drug_protein_interactions(),
                         desc='Mapping drug-protein interactions to BEL'):
             if dpi.protein.hgnc_id is None:
