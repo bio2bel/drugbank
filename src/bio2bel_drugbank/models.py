@@ -243,13 +243,13 @@ class Protein(Base):
         return self.uniprot_id
 
     def as_bel_hgnc(self):
-        return protein(namespace='HGNC', identifier=self.hgnc_id)
+        return protein(namespace='hgnc', name=self.name, identifier=self.hgnc_id)
 
     def as_bel(self):
         if self.hgnc_id:
             return self.as_bel_hgnc()
 
-        return protein(namespace='UNIPROT', identifier=self.uniprot_id)
+        return protein(namespace='uniprot', identifier=self.uniprot_id)
 
 
 class Action(Base):
