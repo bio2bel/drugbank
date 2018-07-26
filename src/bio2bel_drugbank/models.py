@@ -6,7 +6,7 @@ from sqlalchemy import Boolean, Column, Date, ForeignKey, Integer, String, Table
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import backref, relationship
 
-from pybel.constants import ASSOCIATION
+from pybel.constants import REGULATES
 from pybel.dsl import abundance, protein
 from .constants import MODULE_NAME
 
@@ -306,7 +306,7 @@ class DrugProteinInteraction(Base):
             return graph.add_qualified_edge(
                 drug_bel,
                 protein_bel,
-                relation=ASSOCIATION,
+                relation=REGULATES,
                 citation=article.pubmed_id,
                 evidence='From DrugBank',
             )
