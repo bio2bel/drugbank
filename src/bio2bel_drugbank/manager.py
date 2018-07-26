@@ -237,7 +237,7 @@ class Manager(AbstractManager, FlaskMixin, BELManagerMixin, BELNamespaceManagerM
             uniprot_id=d['uniprot_id'],
             species=self.get_or_create_species(d['organism']),
             name=d.get('name'),
-            hgnc_id=d.get('hgnc_id')
+            hgnc_id=d.get('hgnc_id')[len('HGNC:'):]
         )
 
         dpi = DrugProteinInteraction(
