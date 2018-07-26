@@ -153,6 +153,6 @@ def extract_protein_info(category, protein):
     hgnc_ids = [polypep.text for polypep in protein.findall(
         f"{ns}polypeptide/{ns}external-identifiers/{ns}external-identifier[{ns}resource='HUGO Gene Nomenclature Committee (HGNC)']/{ns}identifier")]
     if len(hgnc_ids) == 1:
-        row['hgnc_id'] = hgnc_ids[0]
+        row['hgnc_id'] = hgnc_ids[0][len('HGNC:'):]
 
     return row
