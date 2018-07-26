@@ -13,7 +13,10 @@ from sqlalchemy import func
 from tqdm import tqdm
 from typing import List, Optional
 
-from bio2bel.namespace_manager import NamespaceManagerMixin
+from bio2bel import AbstractManager
+from bio2bel.manager.bel_manager import BELManagerMixin
+from bio2bel.manager.flask_manager import FlaskMixin
+from bio2bel.manager.namespace_manager import BELNamespaceManagerMixin
 from pybel import BELGraph
 from pybel.manager.models import Namespace, NamespaceEntry
 from .constants import DATA_DIR, MODULE_NAME
@@ -31,20 +34,23 @@ _dti_ids_cache_path = os.path.join(DATA_DIR, 'drug_to_gene_ids.json')
 _dti_symbols_cache_path = os.path.join(DATA_DIR, 'drug_to_gene_symbols.json')
 
 
-class Manager(NamespaceManagerMixin):
+class Manager(AbstractManager, FlaskMixin, BELManagerMixin, BELNamespaceManagerMixin):
     """Manager for Bio2BEL DrugBank."""
 
     module_name = MODULE_NAME
+
+    namespace_model = Drug
+    identifiers_recommended = 'DrugBank'
+    identifiers_pattern = '^DB\d{5}$'
+    identifiers_miriam = 'MIR:00000102'
+    identifiers_namespace = 'drugbank'
+    identifiers_url = 'http://identifiers.org/drugbank/'
+
     flask_admin_models = [Drug, Alias, AtcCode, Category, Group, Type, Patent, DrugXref, Species, Protein,
                           DrugProteinInteraction, Action, Article]
 
-    namespace_model = Drug
-
-    def __init__(self, connection=None):
-        """
-        :param Optional[str] connection: SQLAlchemy connection string
-        """
-        super().__init__(connection=connection)
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
 
         self.type_to_model = {}
         self.group_to_model = {}
@@ -454,11 +460,14 @@ class Manager(NamespaceManagerMixin):
         drugbank_namespace = self.upload_bel_namespace()
         graph.namespace_url[drugbank_namespace.keyword] = drugbank_namespace.url
 
-        hgnc_manager = bio2bel_hgnc.Manager.from_connection(self.connection)
+        hgnc_manager = bio2bel_hgnc.Manager(engine=self.engine, session=self.session)
         hgnc_namespace = hgnc_manager.upload_bel_namespace()
         graph.namespace_url[hgnc_namespace.keyword] = hgnc_namespace.url
 
-        for dpi in tqdm(self.list_drug_protein_interactions(), total=self.count_drug_protein_interactions(),
+        dpis = self.session.query(DrugProteinInteraction).limit(5)
+        # dpis = self.list_drug_protein_interactions()
+
+        for dpi in tqdm(dpis, total=self.count_drug_protein_interactions(),
                         desc='Mapping drug-protein interactions to BEL'):
             if dpi.protein.hgnc_id is None:
                 continue
@@ -531,7 +540,7 @@ class Manager(NamespaceManagerMixin):
             with open(_dti_symbols_cache_path) as file:
                 return json.load(file)
 
-        hgnc_manager = bio2bel_hgnc.Manager.from_connection(self.connection)
+        hgnc_manager = bio2bel_hgnc.Manager(engine=self.engine, session=self.session)
         if not hgnc_manager.is_populated():
             hgnc_manager.populate()
 
