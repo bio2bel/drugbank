@@ -35,11 +35,12 @@ Command Line Utility
     bio2bel_drugbank populate
 """
 
-from . import manager, models
+from . import manager, models, utils
 from .manager import *
 from .models import *
+from .utils import *
 
-__all__ = manager.__all__ + models.__all__
+__all__ = manager.__all__ + models.__all__ + utils.__all__
 
 __version__ = '0.0.2-dev'
 
