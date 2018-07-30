@@ -12,16 +12,19 @@ MODULE_NAME = 'drugbank'
 PACKAGES = setuptools.find_packages(where='src')
 META_PATH = os.path.join('src', f'bio2bel_{MODULE_NAME}', '__init__.py')
 INSTALL_REQUIRES = [
-    'pybel>=0.11.1',
-    'bio2bel>=0.0.11',
-    'bio2bel_hgnc>=0.0.6',
+    'pybel>=0.11.10',
+    'bio2bel>=0.1.0',
+    'bio2bel_hgnc>=0.1.0',
     'click',
     'pandas',
     'sqlalchemy',
     'tqdm',
 ]
 EXTRAS_REQUIRE = {
-    'web': ['flask', 'flask-admin'],
+    'web': [
+        'flask',
+        'flask-admin',
+    ],
 }
 ENTRY_POINTS = {
     'bio2bel': [
