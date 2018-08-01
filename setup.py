@@ -11,6 +11,17 @@ import setuptools
 MODULE_NAME = 'drugbank'
 PACKAGES = setuptools.find_packages(where='src')
 META_PATH = os.path.join('src', f'bio2bel_{MODULE_NAME}', '__init__.py')
+CLASSIFIERS = [
+    'Development Status :: 4 - Beta',
+    'Environment :: Console',
+    'Intended Audience :: Developers',
+    'Intended Audience :: Science/Research',
+    'Operating System :: OS Independent',
+    'Programming Language :: Python',
+    'Programming Language :: Python :: 3.6',
+    'Topic :: Scientific/Engineering :: Bio-Informatics',
+    'License :: OSI Approved :: MIT License',
+]
 INSTALL_REQUIRES = [
     'pybel>=0.11.10',
     'bio2bel>=0.1.0',
@@ -77,6 +88,7 @@ if __name__ == '__main__':
         maintainer=find_meta('author'),
         maintainer_email=find_meta('email'),
         license=find_meta('license'),
+        classifiers=CLASSIFIERS,
         packages=PACKAGES,
         package_dir={'': 'src'},
         install_requires=INSTALL_REQUIRES,
