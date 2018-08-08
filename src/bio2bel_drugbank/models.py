@@ -2,12 +2,12 @@
 
 """Database models for bio2bel_drugbank."""
 
+from pybel.constants import REGULATES
+from pybel.dsl import abundance, protein
 from sqlalchemy import Boolean, Column, Date, ForeignKey, Integer, String, Table, Text, and_
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import backref, relationship
 
-from pybel.constants import REGULATES
-from pybel.dsl import abundance, protein
 from .constants import MODULE_NAME
 
 __all__ = [
@@ -116,8 +116,20 @@ class Drug(Base):
     def __repr__(self):
         return self.name
 
-    def as_bel(self):
+    def as_bel(self) -> abundance:
         return abundance(namespace=MODULE_NAME, name=self.name, identifier=self.drugbank_id)
+
+    def as_inchi_bel(self) -> abundance:
+        # https://www.ebi.ac.uk/miriam/main/datatypes/MIR:00000383
+        return abundance(namespace='inchi', name=self.inchi, identifier=self.inchi)
+
+    def as_inchikey_bel(self) -> abundance:
+        # https://www.ebi.ac.uk/miriam/main/datatypes/MIR:00000387
+        return abundance(namespace='inchikey', name=self.inchikey, identifier=self.inchikey)
+
+    def as_cas_bel(self) -> abundance:
+        # https://www.ebi.ac.uk/miriam/main/datatypes/MIR:00000237
+        return abundance(namespace='cas', name=self.cas_number, identifier=self.cas_number)
 
 
 class DrugXref(Base):
@@ -134,6 +146,10 @@ class DrugXref(Base):
 
     def __repr__(self):
         return f'{self.resource}:{self.identifier}'
+
+    @classmethod
+    def has_identifier(cls, resource, identifier):
+        return and_(cls.resource == resource, cls.identifier == identifier)
 
 
 class Patent(Base):
@@ -242,10 +258,10 @@ class Protein(Base):
     def __repr__(self):
         return self.uniprot_id
 
-    def as_bel_hgnc(self):
-        return protein(namespace='hgnc', name=self.name, identifier=self.hgnc_id)
+    def as_bel_hgnc(self) -> protein:
+        return protein(namespace='hgnc', identifier=self.hgnc_id)
 
-    def as_bel(self):
+    def as_bel(self) -> protein:
         if self.hgnc_id:
             return self.as_bel_hgnc()
 
@@ -290,6 +306,19 @@ class DrugProteinInteraction(Base):
     articles = relationship(Article, secondary=dpi_article, lazy='dynamic',
                             backref=backref('drug_protein_interactions', lazy='dynamic'))
 
+    def _add_to_graph(self, graph, u, v):
+        return {
+            graph.add_qualified_edge(
+                u,
+                v,
+                relation=REGULATES,
+                citation=article.pubmed_id,
+                evidence='From DrugBank',
+
+            )
+            for article in self.articles
+        }
+
     def add_to_graph(self, graph):
         """Adds this interaction to the graph
 
@@ -302,11 +331,4 @@ class DrugProteinInteraction(Base):
         drug_bel = self.drug.as_bel()
         protein_bel = self.protein.as_bel()
 
-        for article in self.articles:
-            return graph.add_qualified_edge(
-                drug_bel,
-                protein_bel,
-                relation=REGULATES,
-                citation=article.pubmed_id,
-                evidence='From DrugBank',
-            )
+        return self._add_to_graph(graph, drug_bel, protein_bel)

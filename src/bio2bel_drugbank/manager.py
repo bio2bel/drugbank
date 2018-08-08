@@ -5,20 +5,22 @@
 import json
 import logging
 import os
-from collections import defaultdict
+from collections import Counter, defaultdict
+from typing import Dict, Iterable, List, Optional, Tuple
 
 import bio2bel_hgnc
 import time
-from sqlalchemy import func
-from tqdm import tqdm
-from typing import List, Optional
-
 from bio2bel import AbstractManager
 from bio2bel.manager.bel_manager import BELManagerMixin
 from bio2bel.manager.flask_manager import FlaskMixin
 from bio2bel.manager.namespace_manager import BELNamespaceManagerMixin
 from pybel import BELGraph
+from pybel.constants import ABUNDANCE, FUNCTION, IDENTIFIER, NAME, NAMESPACE, PROTEIN
+from pybel.dsl import abundance
 from pybel.manager.models import Namespace, NamespaceEntry
+from sqlalchemy import func
+from tqdm import tqdm
+
 from .constants import DATA_DIR, MODULE_NAME
 from .models import (
     Action, Alias, Article, AtcCode, Base, Category, Drug, DrugProteinInteraction, DrugXref, Group, Patent, Protein,
@@ -316,88 +318,56 @@ class Manager(AbstractManager, FlaskMixin, BELManagerMixin, BELNamespaceManagerM
         """
         return self._count_model(Drug)
 
-    def list_drugs(self):
-        """List all drugs in the database
-
-        :rtype: list[Drug]
-        """
+    def list_drugs(self) -> List[Drug]:
+        """List all drugs in the database."""
         return self._list_model(Drug)
 
-    def count_types(self):
-        """Count the number of types in the database
-
-        :rtype: int
-        """
+    def count_types(self) -> int:
+        """Count the number of types in the database."""
         return self._count_model(Type)
 
-    def count_aliases(self):
-        """Count the number of aliases in the database
-
-        :rtype: int
-        """
+    def count_aliases(self) -> int:
+        """Count the number of aliases in the database."""
         return self._count_model(Alias)
 
-    def count_atc_codes(self):
-        """Count the number of ATC codes in the database
-
-        :rtype: int
-        """
+    def count_atc_codes(self) -> int:
+        """Count the number of ATC codes in the database."""
         return self._count_model(AtcCode)
 
-    def count_groups(self):
-        """Count the number of groups in the database
-
-        :rtype: int
-        """
+    def count_groups(self) -> int:
+        """Count the number of groups in the database."""
         return self._count_model(Group)
 
-    def count_categories(self):
-        """Count the number of categories in the database
-
-        :rtype: int
-        """
+    def count_categories(self) -> int:
+        """Count the number of categories in the database."""
         return self._count_model(Category)
 
     def count_drugs_categories(self) -> int:
-        """Count the number of drug-category relations in the database
-
-        :rtype: int
-        """
+        """Count the number of drug-category relations in the database."""
         return self._count_model(drug_category)
 
     def count_drugs_groups(self) -> int:
-        """Count the number of drug-group relations in the database
-
-        :rtype: int
-        """
+        """Count the number of drug-group relations in the database."""
         return self._count_model(drug_group)
 
     def count_patents(self) -> int:
-        """Count the number of patents in the database
-
-        :rtype: int
-        """
+        """Count the number of patents in the database."""
         return self._count_model(Patent)
 
-    def list_patents(self):
-        """Lists the patents in the database
-
-        :rtype: list[Patent]
-        """
+    def list_patents(self) -> List[Patent]:
+        """List the patents in the database."""
         return self._list_model(Patent)
 
     def count_xrefs(self) -> int:
-        """Count the number of cross-references in the database
-
-        :rtype: int
-        """
+        """Count the number of cross-references in the database."""
         return self._count_model(DrugXref)
 
     def get_xrefs_by_resource(self, resource) -> List[DrugXref]:
         return self.session.query(DrugXref).filter(DrugXref.resource == resource).all()
 
-    def summarize_xrefs(self):
-        return self.session.query(DrugXref.resource, func.count(DrugXref.resource)).group_by(DrugXref.resource).all()
+    def summarize_xrefs(self) -> Counter:
+        return Counter(
+            self.session.query(DrugXref.resource, func.count(DrugXref.resource)).group_by(DrugXref.resource).all())
 
     def count_species(self) -> int:
         return self._count_model(Species)
@@ -411,7 +381,7 @@ class Manager(AbstractManager, FlaskMixin, BELManagerMixin, BELNamespaceManagerM
     def count_actions(self) -> int:
         return self._count_model(Action)
 
-    def count_drug_protein_interactions(self):
+    def count_drug_protein_interactions(self) -> int:
         return self._count_model(DrugProteinInteraction)
 
     def list_drug_protein_interactions(self) -> List[DrugProteinInteraction]:
@@ -424,8 +394,8 @@ class Manager(AbstractManager, FlaskMixin, BELManagerMixin, BELNamespaceManagerM
     def count_articles(self) -> int:
         return self._count_model(Article)
 
-    def summarize(self):
-        """Summarizes the database
+    def summarize(self) -> Dict[str, int]:
+        """Summarize the database.
 
         :rtype: dict[str,int]
         """
@@ -445,20 +415,140 @@ class Manager(AbstractManager, FlaskMixin, BELManagerMixin, BELNamespaceManagerM
         )
 
     @staticmethod
-    def _get_identifier(drug: Drug):
+    def _get_identifier(drug: Drug) -> str:
         return drug.drugbank_id
 
-    def _create_namespace_entry_from_model(self, model: Drug, namespace: Namespace):
+    def _create_namespace_entry_from_model(self, model: Drug, namespace: Namespace) -> NamespaceEntry:
         return NamespaceEntry(encoding='A', name=model.name, identifier=model.drugbank_id, namespace=namespace)
 
-    def to_bel(self):
+    def add_namespace_to_graph(self, graph: BELGraph) -> NamespaceEntry:
+        """Add this manager's namespace to the graph.
+
+        :param pybel.BELGraph graph:
+        """
+        namespace = self.upload_bel_namespace()
+        graph.namespace_url[namespace.keyword] = namespace.url
+        return namespace
+
+    def _get_target(self, graph: BELGraph, node) -> Optional[Protein]:
+        data = graph.node[node]
+
+        namespace = data.get(NAMESPACE)
+        if data[FUNCTION] != PROTEIN or namespace is None:
+            return
+
+        identifier = data.get(IDENTIFIER)
+        if namespace.lower() == 'hgnc' and identifier:
+            return self.get_protein_by_hgnc_id(identifier)
+
+        if namespace.lower() == 'uniprot' and identifier:
+            return self.get_protein_by_uniprot_id(identifier)
+
+    def _iter_targets(self, graph: BELGraph) -> Iterable[Tuple[tuple, dict, Protein]]:
+        for node, node_data in graph.nodes(data=True):
+            protein_model = self._get_target(graph, node)
+            if protein_model is not None:
+                yield node, node_data, protein_model
+
+    def enrich_targets(self, graph: BELGraph) -> None:
+        """"""
+        self.add_namespace_to_graph(graph)
+
+        c = 0
+        for node_tuple, node_data, protein_model in self._iter_targets(graph):
+            for dpi in protein_model.drug_interactions:
+                dpi._add_to_graph(graph, dpi.drug.as_bel(), node_tuple)
+                c += 1
+
+        log.info('added %d drug-protein interactions.', c)
+
+    def get_drug_by_drugbank_id(self, drugbank_id: str) -> Optional[Drug]:
+        return self.session.query(Drug).filter(Drug.drugbank_id == drugbank_id).one_or_none()
+
+    def get_drug_by_inchi(self, inchi: str) -> Optional[Drug]:
+        return self.session.query(Drug).filter(Drug.inchi == inchi).one_or_none()
+
+    def get_drug_by_inchikey(self, inchikey: str) -> Optional[Drug]:
+        return self.session.query(Drug).filter(Drug.inchikey == inchikey).one_or_none()
+
+    def get_drug_by_xref(self, resource: str, identifier: str) -> Optional[Drug]:
+        # need to join the xref table for this one
+        xref = self.session.query(DrugXref).filter(DrugXref.has_identifier(resource, identifier)).one_or_none()
+        if xref:
+            return xref.drug
+
+    def _get_drug(self, graph: BELGraph, node) -> Optional[Drug]:
+        """Try and look up a drug."""
+        data = graph.node[node]
+
+        namespace = data.get(NAMESPACE)
+
+        if data[FUNCTION] != ABUNDANCE or namespace is None:
+            return
+
+        name, identifier = data.get(NAME), data.get(IDENTIFIER)
+
+        if namespace.lower() == 'drugbank':
+            if identifier is not None:
+                return self.get_drug_by_drugbank_id(identifier)
+            if name is not None and name.startswith('DB'):
+                return self.get_drug_by_drugbank_id(name)
+
+    def _iter_drugs(self, graph) -> Iterable[Tuple[tuple, dict, Drug]]:
+        for node, node_data in graph.nodes(data=True):
+            drug_model = self._get_drug(graph, node)
+            if drug_model is not None:
+                yield node, node_data, drug_model
+
+    def enrich_drug_inchi(self, graph: BELGraph) -> None:
+        self.add_namespace_to_graph(graph)
+
+        for node_tuple, node_data, drug_model in self._iter_drugs(graph):
+            if drug_model.inchi:
+                graph.add_equivalence(node_tuple, drug_model.as_inchi_bel())
+
+    def enrich_drug_equivalences(self, graph: BELGraph) -> None:
+        self.add_namespace_to_graph(graph)
+
+        for node_tuple, node_data, drug_model in self._iter_drugs(graph):
+            if drug_model.inchi:
+                graph.add_equivalence(node_tuple, drug_model.as_inchi_bel())
+
+            if drug_model.inchikey:
+                graph.add_equivalence(node_tuple, drug_model.as_inchikey_bel())
+
+            for xref in drug_model.xrefs:
+                resource = xref.resource.lower()
+                identifier = xref.identifier
+
+                if xref.resource in {'chebi', 'chembl'}:
+                    graph.add_equivalence(node_tuple, abundance(namespace=resource, identifier=identifier))
+                elif xref.resource == 'KEGG Compound':
+                    # https://www.ebi.ac.uk/miriam/main/datatypes/MIR:00000013
+                    graph.add_equivalence(node_tuple, abundance(namespace='kegg.compound', identifier=identifier))
+                elif xref.resource == 'PubChem Substance':
+                    # https://www.ebi.ac.uk/miriam/main/datatypes/MIR:00000033
+                    graph.add_equivalence(node_tuple, abundance(namespace='pubchem.substance', identifier=identifier))
+                elif xref.resource == 'PubChem Compound':
+                    # https://www.ebi.ac.uk/miriam/main/datatypes/MIR:00000034
+                    graph.add_equivalence(node_tuple, abundance(namespace='pubchem.compound', identifier=identifier))
+
+                # TODO there are plenty more. implement as other bio2bel repositories need
+
+    def enrich_drugs(self, graph: BELGraph) -> None:
+        self.add_namespace_to_graph(graph)
+
+        for node_tuple, node_data, drug_model in self._iter_drugs(graph):
+            for dpi in drug_model.protein_interactions:
+                dpi.add_to_graph(graph)
+
+    def to_bel(self) -> BELGraph:
         graph = BELGraph(
             name='DrugBank',
             version='5.1',
         )
 
-        drugbank_namespace = self.upload_bel_namespace()
-        graph.namespace_url[drugbank_namespace.keyword] = drugbank_namespace.url
+        self.add_namespace_to_graph(graph)
 
         hgnc_manager = bio2bel_hgnc.Manager(engine=self.engine, session=self.session)
         hgnc_namespace = hgnc_manager.upload_bel_namespace()
@@ -473,11 +563,8 @@ class Manager(AbstractManager, FlaskMixin, BELManagerMixin, BELNamespaceManagerM
 
         return graph
 
-    def get_hgnc_id_to_drugs(self):
-        """Gets a dictionary of HGNC identifiers (not prepended with HGNC:) to list of drug names
-
-        :rtype: dict[str,list[str]]
-        """
+    def get_hgnc_id_to_drugs(self) -> Dict[str, List[str]]:
+        """Get a dictionary of HGNC identifiers (not prepended with HGNC:) to list of drug names."""
         rv = defaultdict(list)
 
         for dpi in tqdm(self.list_drug_protein_interactions(),
@@ -494,11 +581,8 @@ class Manager(AbstractManager, FlaskMixin, BELManagerMixin, BELNamespaceManagerM
 
         return rv
 
-    def get_drug_to_hgnc_ids(self, cache=True, recalculate=False):
-        """Gets a dictionary of drug names to lists HGNC identifiers (not prepended with HGNC:)
-
-        :rtype: dict[str,list[str]]
-        """
+    def get_drug_to_hgnc_ids(self, cache=True, recalculate=False) -> Dict[str, List[str]]:
+        """Get a dictionary of drug names to lists HGNC identifiers (not prepended with HGNC:)."""
         if cache and not recalculate and os.path.exists(_dti_ids_cache_path):
             log.info('loading cached DTIs')
             with open(_dti_ids_cache_path) as file:
@@ -525,14 +609,8 @@ class Manager(AbstractManager, FlaskMixin, BELManagerMixin, BELNamespaceManagerM
 
         return rv
 
-    def get_drug_to_hgnc_symbols(self, cache=True, recalculate=False):
-        """Gets a dictionary of drug names to HGNC gene symbols.
-
-        Requires the installation of ``bio2bel_hgnc``
-
-        :rtype: dict[str,list[str]]
-        :raises: ImportError
-        """
+    def get_drug_to_hgnc_symbols(self, cache=True, recalculate=False) -> Dict[str, List[str]]:
+        """Get a dictionary of drug names to HGNC gene symbols."""
         if cache and not recalculate and os.path.exists(_dti_symbols_cache_path):
             log.debug('loading cached DTIs with gene symbols')
             with open(_dti_symbols_cache_path) as file:
@@ -564,20 +642,17 @@ class Manager(AbstractManager, FlaskMixin, BELManagerMixin, BELNamespaceManagerM
 
         return rv
 
-    def get_interactions_by_hgnc_id(self, hgnc_id):
-        """Gets the drug targets for a given HGNC identifier.
+    def get_interactions_by_hgnc_id(self, hgnc_id: str) -> List[DrugProteinInteraction]:
+        """Get the drug targets for a given HGNC identifier.
 
-        :param str hgnc_id: HGNC identifier
-        :rtype: Optional[list[DrugProteinInteraction]]
+        :param hgnc_id: HGNC identifier
         """
         protein = self.get_protein_by_hgnc_id(hgnc_id)
 
         if not protein:
-            return None
+            return []
 
         return [
             interaction
             for interaction in protein.drug_interactions
         ]
-
-    # TODO: ADD enrich graph methods
