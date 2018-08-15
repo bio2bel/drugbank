@@ -341,6 +341,9 @@ class DrugProteinInteraction(Base):
                 relation=REGULATES,
                 citation=article.pubmed_id,
                 evidence='From DrugBank',
+                annotations={
+                    'bio2bel': MODULE_NAME,
+                }
 
             )
             for article in self.articles

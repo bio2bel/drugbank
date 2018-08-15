@@ -10,10 +10,6 @@ from typing import Dict, Iterable, List, Optional, Tuple
 
 import bio2bel_hgnc
 import time
-from pybel import BELGraph
-from pybel.constants import ABUNDANCE, FUNCTION, IDENTIFIER, NAME, NAMESPACE, PROTEIN
-from pybel.dsl import abundance, BaseEntity
-from pybel.manager.models import Namespace, NamespaceEntry
 from sqlalchemy import func
 from tqdm import tqdm
 
@@ -21,10 +17,14 @@ from bio2bel import AbstractManager
 from bio2bel.manager.bel_manager import BELManagerMixin
 from bio2bel.manager.flask_manager import FlaskMixin
 from bio2bel.manager.namespace_manager import BELNamespaceManagerMixin
+from pybel import BELGraph
+from pybel.constants import ABUNDANCE, FUNCTION, IDENTIFIER, NAME, NAMESPACE, PROTEIN
+from pybel.dsl import BaseEntity, abundance
+from pybel.manager.models import Namespace, NamespaceEntry
 from .constants import DATA_DIR, MODULE_NAME
 from .models import (
     Action, Alias, Article, AtcCode, Base, Category, Drug, DrugProteinInteraction, DrugXref, Group, Patent, Protein,
-    Species, Type, drug_category, drug_group
+    Species, Type, drug_category, drug_group,
 )
 from .parser import extract_drug_info, get_xml_root
 
@@ -449,7 +449,7 @@ class Manager(AbstractManager, FlaskMixin, BELManagerMixin, BELNamespaceManagerM
                 yield node_data, protein_model
 
     def enrich_targets(self, graph: BELGraph) -> None:
-        """"""
+        """Enrich the protein targets in the graph with Drug-Protein interactions from DrugBank."""
         self.add_namespace_to_graph(graph)
 
         c = 0
@@ -490,7 +490,7 @@ class Manager(AbstractManager, FlaskMixin, BELManagerMixin, BELNamespaceManagerM
             if name is not None and name.startswith('DB'):
                 return self.get_drug_by_drugbank_id(name)
 
-    def _iter_drugs(self, graph) -> Iterable[Tuple[BaseEntity, Drug]]:
+    def iter_drugs(self, graph) -> Iterable[Tuple[BaseEntity, Drug]]:
         for _, node_data in graph.nodes(data=True):
             drug_model = self._get_drug(node_data)
             if drug_model is not None:
@@ -499,14 +499,14 @@ class Manager(AbstractManager, FlaskMixin, BELManagerMixin, BELNamespaceManagerM
     def enrich_drug_inchi(self, graph: BELGraph) -> None:
         self.add_namespace_to_graph(graph)
 
-        for node, drug_model in self._iter_drugs(graph):
+        for node, drug_model in self.iter_drugs(graph):
             if drug_model.inchi:
                 graph.add_equivalence(node, drug_model.as_inchi_bel())
 
     def enrich_drug_equivalences(self, graph: BELGraph) -> None:
         self.add_namespace_to_graph(graph)
 
-        for node, drug_model in self._iter_drugs(graph):
+        for node, drug_model in self.iter_drugs(graph):
             if drug_model.inchi:
                 graph.add_equivalence(node, drug_model.as_inchi_bel())
 
@@ -534,7 +534,7 @@ class Manager(AbstractManager, FlaskMixin, BELManagerMixin, BELNamespaceManagerM
     def enrich_drugs(self, graph: BELGraph) -> None:
         self.add_namespace_to_graph(graph)
 
-        for node_data, drug_model in self._iter_drugs(graph):
+        for node_data, drug_model in self.iter_drugs(graph):
             for dpi in drug_model.protein_interactions:
                 dpi.add_to_graph(graph)
 
