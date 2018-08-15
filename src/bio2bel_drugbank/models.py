@@ -193,8 +193,9 @@ class Patent(Base):
         """Return the Google Patents URL of this patent."""
         return f'https://patents.google.com/patent/{PATENT_PREFIX_MAP[self.country]}{self.patent_id}'
 
-    def download_pdfs(self, outdir:str):
-        download_google_patents(self.google_url, outdir)
+    def download_pdfs(self, outdir: str):
+        return download_google_patents(self.google_url, outdir)
+
 
 class Alias(Base):
     """Represents an alias of a drug."""

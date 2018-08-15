@@ -8,3 +8,4 @@ tqdm
 flask[web]
 flask_admin[web]
 beautifulsoup4
+requests

@@ -30,6 +30,8 @@ INSTALL_REQUIRES = [
     'pandas',
     'sqlalchemy',
     'tqdm',
+    'beautifulsoup4',
+    'requests',
 ]
 EXTRAS_REQUIRE = {
     'web': [
