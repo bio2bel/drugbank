@@ -10,21 +10,21 @@ from typing import Dict, Iterable, List, Optional, Tuple
 
 import bio2bel_hgnc
 import time
-from bio2bel import AbstractManager
-from bio2bel.manager.bel_manager import BELManagerMixin
-from bio2bel.manager.flask_manager import FlaskMixin
-from bio2bel.manager.namespace_manager import BELNamespaceManagerMixin
 from pybel import BELGraph
 from pybel.constants import ABUNDANCE, FUNCTION, IDENTIFIER, NAME, NAMESPACE, PROTEIN
-from pybel.dsl import abundance
+from pybel.dsl import abundance, BaseEntity
 from pybel.manager.models import Namespace, NamespaceEntry
 from sqlalchemy import func
 from tqdm import tqdm
 
+from bio2bel import AbstractManager
+from bio2bel.manager.bel_manager import BELManagerMixin
+from bio2bel.manager.flask_manager import FlaskMixin
+from bio2bel.manager.namespace_manager import BELNamespaceManagerMixin
 from .constants import DATA_DIR, MODULE_NAME
 from .models import (
     Action, Alias, Article, AtcCode, Base, Category, Drug, DrugProteinInteraction, DrugXref, Group, Patent, Protein,
-    Species, Type, drug_category, drug_group,
+    Species, Type, drug_category, drug_group
 )
 from .parser import extract_drug_info, get_xml_root
 
@@ -175,8 +175,17 @@ class Manager(AbstractManager, FlaskMixin, BELManagerMixin, BELNamespaceManagerM
     def get_protein_by_uniprot_id(self, uniprot_id: str) -> Optional[Protein]:
         return self.session.query(Protein).filter(Protein.uniprot_id == uniprot_id).one_or_none()
 
-    def get_protein_by_hgnc_id(self, hgnc_id):
-        return self.session.query(Protein).filter(Protein.hgnc_id == hgnc_id).one_or_none()
+    def get_protein_by_hgnc_id(self, hgnc_id: str) -> Optional[Protein]:
+        res: List[Protein] = list(self.session.query(Protein).filter(Protein.hgnc_id == hgnc_id).all())
+
+        if len(res) == 0:
+            return
+        if len(res) == 1:
+            return res[0]
+
+        warning_txt = '\n'.join(f' - {result.uniprot_id} {result.name}' for result in res)
+        log.error('found multiple isoforms of hgnc:%s. Keeping first of:\n%s', hgnc_id, warning_txt)
+        return res[0]
 
     def get_or_create_protein(self, uniprot_id: str, **kwargs) -> Protein:
         m = self.uniprot_id_to_protein.get(uniprot_id)
@@ -421,18 +430,7 @@ class Manager(AbstractManager, FlaskMixin, BELManagerMixin, BELNamespaceManagerM
     def _create_namespace_entry_from_model(self, model: Drug, namespace: Namespace) -> NamespaceEntry:
         return NamespaceEntry(encoding='A', name=model.name, identifier=model.drugbank_id, namespace=namespace)
 
-    def add_namespace_to_graph(self, graph: BELGraph) -> NamespaceEntry:
-        """Add this manager's namespace to the graph.
-
-        :param pybel.BELGraph graph:
-        """
-        namespace = self.upload_bel_namespace()
-        graph.namespace_url[namespace.keyword] = namespace.url
-        return namespace
-
-    def _get_target(self, graph: BELGraph, node) -> Optional[Protein]:
-        data = graph.node[node]
-
+    def _get_target(self, data) -> Optional[Protein]:
         namespace = data.get(NAMESPACE)
         if data[FUNCTION] != PROTEIN or namespace is None:
             return
@@ -444,20 +442,20 @@ class Manager(AbstractManager, FlaskMixin, BELManagerMixin, BELNamespaceManagerM
         if namespace.lower() == 'uniprot' and identifier:
             return self.get_protein_by_uniprot_id(identifier)
 
-    def _iter_targets(self, graph: BELGraph) -> Iterable[Tuple[tuple, dict, Protein]]:
-        for node, node_data in graph.nodes(data=True):
-            protein_model = self._get_target(graph, node)
+    def iter_targets(self, graph: BELGraph) -> Iterable[Tuple[BaseEntity, Protein]]:
+        for _, node_data in graph.nodes(data=True):
+            protein_model = self._get_target(node_data)
             if protein_model is not None:
-                yield node, node_data, protein_model
+                yield node_data, protein_model
 
     def enrich_targets(self, graph: BELGraph) -> None:
         """"""
         self.add_namespace_to_graph(graph)
 
         c = 0
-        for node_tuple, node_data, protein_model in self._iter_targets(graph):
+        for node_data, protein_model in self.iter_targets(graph):
             for dpi in protein_model.drug_interactions:
-                dpi._add_to_graph(graph, dpi.drug.as_bel(), node_tuple)
+                dpi._add_to_graph(graph, dpi.drug.as_bel(), node_data)
                 c += 1
 
         log.info('added %d drug-protein interactions.', c)
@@ -477,10 +475,8 @@ class Manager(AbstractManager, FlaskMixin, BELManagerMixin, BELNamespaceManagerM
         if xref:
             return xref.drug
 
-    def _get_drug(self, graph: BELGraph, node) -> Optional[Drug]:
+    def _get_drug(self, data) -> Optional[Drug]:
         """Try and look up a drug."""
-        data = graph.node[node]
-
         namespace = data.get(NAMESPACE)
 
         if data[FUNCTION] != ABUNDANCE or namespace is None:
@@ -494,51 +490,51 @@ class Manager(AbstractManager, FlaskMixin, BELManagerMixin, BELNamespaceManagerM
             if name is not None and name.startswith('DB'):
                 return self.get_drug_by_drugbank_id(name)
 
-    def _iter_drugs(self, graph) -> Iterable[Tuple[tuple, dict, Drug]]:
-        for node, node_data in graph.nodes(data=True):
-            drug_model = self._get_drug(graph, node)
+    def _iter_drugs(self, graph) -> Iterable[Tuple[BaseEntity, Drug]]:
+        for _, node_data in graph.nodes(data=True):
+            drug_model = self._get_drug(node_data)
             if drug_model is not None:
-                yield node, node_data, drug_model
+                yield node_data, drug_model
 
     def enrich_drug_inchi(self, graph: BELGraph) -> None:
         self.add_namespace_to_graph(graph)
 
-        for node_tuple, node_data, drug_model in self._iter_drugs(graph):
+        for node, drug_model in self._iter_drugs(graph):
             if drug_model.inchi:
-                graph.add_equivalence(node_tuple, drug_model.as_inchi_bel())
+                graph.add_equivalence(node, drug_model.as_inchi_bel())
 
     def enrich_drug_equivalences(self, graph: BELGraph) -> None:
         self.add_namespace_to_graph(graph)
 
-        for node_tuple, node_data, drug_model in self._iter_drugs(graph):
+        for node, drug_model in self._iter_drugs(graph):
             if drug_model.inchi:
-                graph.add_equivalence(node_tuple, drug_model.as_inchi_bel())
+                graph.add_equivalence(node, drug_model.as_inchi_bel())
 
             if drug_model.inchikey:
-                graph.add_equivalence(node_tuple, drug_model.as_inchikey_bel())
+                graph.add_equivalence(node, drug_model.as_inchikey_bel())
 
             for xref in drug_model.xrefs:
                 resource = xref.resource.lower()
                 identifier = xref.identifier
 
                 if xref.resource in {'chebi', 'chembl'}:
-                    graph.add_equivalence(node_tuple, abundance(namespace=resource, identifier=identifier))
+                    graph.add_equivalence(node, abundance(namespace=resource, identifier=identifier))
                 elif xref.resource == 'KEGG Compound':
                     # https://www.ebi.ac.uk/miriam/main/datatypes/MIR:00000013
-                    graph.add_equivalence(node_tuple, abundance(namespace='kegg.compound', identifier=identifier))
+                    graph.add_equivalence(node, abundance(namespace='kegg.compound', identifier=identifier))
                 elif xref.resource == 'PubChem Substance':
                     # https://www.ebi.ac.uk/miriam/main/datatypes/MIR:00000033
-                    graph.add_equivalence(node_tuple, abundance(namespace='pubchem.substance', identifier=identifier))
+                    graph.add_equivalence(node, abundance(namespace='pubchem.substance', identifier=identifier))
                 elif xref.resource == 'PubChem Compound':
                     # https://www.ebi.ac.uk/miriam/main/datatypes/MIR:00000034
-                    graph.add_equivalence(node_tuple, abundance(namespace='pubchem.compound', identifier=identifier))
+                    graph.add_equivalence(node, abundance(namespace='pubchem.compound', identifier=identifier))
 
                 # TODO there are plenty more. implement as other bio2bel repositories need
 
     def enrich_drugs(self, graph: BELGraph) -> None:
         self.add_namespace_to_graph(graph)
 
-        for node_tuple, node_data, drug_model in self._iter_drugs(graph):
+        for node_data, drug_model in self._iter_drugs(graph):
             for dpi in drug_model.protein_interactions:
                 dpi.add_to_graph(graph)
 
@@ -551,8 +547,7 @@ class Manager(AbstractManager, FlaskMixin, BELManagerMixin, BELNamespaceManagerM
         self.add_namespace_to_graph(graph)
 
         hgnc_manager = bio2bel_hgnc.Manager(engine=self.engine, session=self.session)
-        hgnc_namespace = hgnc_manager.upload_bel_namespace()
-        graph.namespace_url[hgnc_namespace.keyword] = hgnc_namespace.url
+        hgnc_manager.add_namespace_to_graph(graph)
 
         dpis = self.list_drug_protein_interactions()
         for dpi in tqdm(dpis, total=self.count_drug_protein_interactions(),
@@ -579,7 +574,7 @@ class Manager(AbstractManager, FlaskMixin, BELManagerMixin, BELNamespaceManagerM
 
             rv[hgnc_id].append(drug_name)
 
-        return rv
+        return dict(rv)
 
     def get_drug_to_hgnc_ids(self, cache=True, recalculate=False) -> Dict[str, List[str]]:
         """Get a dictionary of drug names to lists HGNC identifiers (not prepended with HGNC:)."""
@@ -607,7 +602,7 @@ class Manager(AbstractManager, FlaskMixin, BELManagerMixin, BELNamespaceManagerM
                 log.info('dumping cached DTIs')
                 json.dump(rv, file)
 
-        return rv
+        return dict(rv)
 
     def get_drug_to_hgnc_symbols(self, cache=True, recalculate=False) -> Dict[str, List[str]]:
         """Get a dictionary of drug names to HGNC gene symbols."""
@@ -640,7 +635,7 @@ class Manager(AbstractManager, FlaskMixin, BELManagerMixin, BELNamespaceManagerM
                 log.info('dumping cached DTIs')
                 json.dump(rv, file)
 
-        return rv
+        return dict(rv)
 
     def get_interactions_by_hgnc_id(self, hgnc_id: str) -> List[DrugProteinInteraction]:
         """Get the drug targets for a given HGNC identifier.

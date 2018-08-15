@@ -24,7 +24,7 @@ CLASSIFIERS = [
 ]
 INSTALL_REQUIRES = [
     'pybel>=0.11.10',
-    'bio2bel>=0.1.0',
+    'bio2bel>=0.1.4',
     'bio2bel_hgnc>=0.1.0',
     'click',
     'pandas',

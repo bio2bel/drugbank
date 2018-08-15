@@ -2,13 +2,17 @@
 
 """Database models for bio2bel_drugbank."""
 
-from pybel.constants import REGULATES
-from pybel.dsl import abundance, protein
+from typing import Set
+
 from sqlalchemy import Boolean, Column, Date, ForeignKey, Integer, String, Table, Text, and_
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import backref, relationship
 
+from pybel import BELGraph
+from pybel.constants import REGULATES
+from pybel.dsl import BaseEntity, abundance, protein
 from .constants import MODULE_NAME
+from .patent_utils import download_google_patents
 
 __all__ = [
     'Action',
@@ -85,6 +89,11 @@ dpi_article = Table(
     Column('drug_protein_id', Integer, ForeignKey(f'{DRUG_PROTEIN_TABLE_NAME}.id'), primary_key=True),
     Column('article_id', Integer, ForeignKey(f'{ARTICLE_TABLE_NAME}.id'), primary_key=True)
 )
+
+PATENT_PREFIX_MAP = {
+    'United States': 'US',
+    'Canada': 'CA',
+}
 
 
 class Type(Base):
@@ -170,6 +179,22 @@ class Patent(Base):
     def filter_pk(country, patent_id):
         return and_(Patent.country == country, Patent.patent_id == patent_id)
 
+    def to_json(self):
+        return dict(
+            patent_id=self.patent_id,
+            country=self.country,
+            approved_date=str(self.approved),
+            expires_date=str(self.expires),
+            pediatric_extension=self.pediatric_extension
+        )
+
+    @property
+    def google_url(self) -> str:
+        """Return the Google Patents URL of this patent."""
+        return f'https://patents.google.com/patent/{PATENT_PREFIX_MAP[self.country]}{self.patent_id}'
+
+    def download_pdfs(self, outdir:str):
+        download_google_patents(self.google_url, outdir)
 
 class Alias(Base):
     """Represents an alias of a drug."""
@@ -306,7 +331,8 @@ class DrugProteinInteraction(Base):
     articles = relationship(Article, secondary=dpi_article, lazy='dynamic',
                             backref=backref('drug_protein_interactions', lazy='dynamic'))
 
-    def _add_to_graph(self, graph, u, v):
+    def _add_to_graph(self, graph: BELGraph, u: BaseEntity, v: BaseEntity) -> Set[str]:
+        """Return the set of keys used to add these edges."""
         return {
             graph.add_qualified_edge(
                 u,
@@ -319,12 +345,10 @@ class DrugProteinInteraction(Base):
             for article in self.articles
         }
 
-    def add_to_graph(self, graph):
-        """Adds this interaction to the graph
+    def add_to_graph(self, graph: BELGraph) -> Set[str]:
+        """Add this interaction to the graph.
 
-        :param pybel.BELGraph graph: A BEL graph
-        :return: The hash of the edge that was added
-        :rtype: str
+        :return: A set of the hashes of the edges that were added
         """
         # TODO update implementation to use actions
 
