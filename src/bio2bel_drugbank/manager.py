@@ -453,7 +453,7 @@ class Manager(AbstractManager, FlaskMixin, BELManagerMixin, BELNamespaceManagerM
         self.add_namespace_to_graph(graph)
 
         c = 0
-        for node_data, protein_model in self.iter_targets(graph):
+        for node_data, protein_model in list(self.iter_targets(graph)):
             for dpi in protein_model.drug_interactions:
                 dpi._add_to_graph(graph, dpi.drug.as_bel(), node_data)
                 c += 1
@@ -499,14 +499,14 @@ class Manager(AbstractManager, FlaskMixin, BELManagerMixin, BELNamespaceManagerM
     def enrich_drug_inchi(self, graph: BELGraph) -> None:
         self.add_namespace_to_graph(graph)
 
-        for node, drug_model in self.iter_drugs(graph):
+        for node, drug_model in list(self.iter_drugs(graph)):
             if drug_model.inchi:
                 graph.add_equivalence(node, drug_model.as_inchi_bel())
 
     def enrich_drug_equivalences(self, graph: BELGraph) -> None:
         self.add_namespace_to_graph(graph)
 
-        for node, drug_model in self.iter_drugs(graph):
+        for node, drug_model in list(self.iter_drugs(graph)):
             if drug_model.inchi:
                 graph.add_equivalence(node, drug_model.as_inchi_bel())
 
@@ -534,11 +534,12 @@ class Manager(AbstractManager, FlaskMixin, BELManagerMixin, BELNamespaceManagerM
     def enrich_drugs(self, graph: BELGraph) -> None:
         self.add_namespace_to_graph(graph)
 
-        for node_data, drug_model in self.iter_drugs(graph):
+        for node_data, drug_model in list(self.iter_drugs(graph)):
             for dpi in drug_model.protein_interactions:
                 dpi.add_to_graph(graph)
 
     def to_bel(self) -> BELGraph:
+        """Export drugbank as BEL."""
         graph = BELGraph(
             name='DrugBank',
             version='5.1',
