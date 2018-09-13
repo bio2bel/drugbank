@@ -430,7 +430,7 @@ class Manager(AbstractManager, FlaskMixin, BELManagerMixin, BELNamespaceManagerM
     def _create_namespace_entry_from_model(self, model: Drug, namespace: Namespace) -> NamespaceEntry:
         return NamespaceEntry(encoding='A', name=model.name, identifier=model.drugbank_id, namespace=namespace)
 
-    def _get_target(self, data) -> Optional[Protein]:
+    def lookup_target(self, data: BaseEntity) -> Optional[Protein]:
         namespace = data.get(NAMESPACE)
         if data[FUNCTION] != PROTEIN or namespace is None:
             return
@@ -443,10 +443,10 @@ class Manager(AbstractManager, FlaskMixin, BELManagerMixin, BELNamespaceManagerM
             return self.get_protein_by_uniprot_id(identifier)
 
     def iter_targets(self, graph: BELGraph) -> Iterable[Tuple[BaseEntity, Protein]]:
-        for _, node_data in graph.nodes(data=True):
-            protein_model = self._get_target(node_data)
+        for node in graph:
+            protein_model = self.lookup_target(node)
             if protein_model is not None:
-                yield node_data, protein_model
+                yield node, protein_model
 
     def enrich_targets(self, graph: BELGraph) -> None:
         """Enrich the protein targets in the graph with Drug-Protein interactions from DrugBank."""
@@ -475,14 +475,14 @@ class Manager(AbstractManager, FlaskMixin, BELManagerMixin, BELNamespaceManagerM
         if xref:
             return xref.drug
 
-    def _get_drug(self, data) -> Optional[Drug]:
+    def lookup_drug(self, node: BaseEntity) -> Optional[Drug]:
         """Try and look up a drug."""
-        namespace = data.get(NAMESPACE)
+        namespace = node.get(NAMESPACE)
 
-        if data[FUNCTION] != ABUNDANCE or namespace is None:
+        if node[FUNCTION] != ABUNDANCE or namespace is None:
             return
 
-        name, identifier = data.get(NAME), data.get(IDENTIFIER)
+        name, identifier = node.get(NAME), node.get(IDENTIFIER)
 
         if namespace.lower() == 'drugbank':
             if identifier is not None:
@@ -491,12 +491,13 @@ class Manager(AbstractManager, FlaskMixin, BELManagerMixin, BELNamespaceManagerM
                 return self.get_drug_by_drugbank_id(name)
 
     def iter_drugs(self, graph) -> Iterable[Tuple[BaseEntity, Drug]]:
-        for _, node_data in graph.nodes(data=True):
-            drug_model = self._get_drug(node_data)
+        for node in graph:
+            drug_model = self.lookup_drug(node)
             if drug_model is not None:
-                yield node_data, drug_model
+                yield node, drug_model
 
     def enrich_drug_inchi(self, graph: BELGraph) -> None:
+        """Enrich drugs in the graph with their InChI equivalent nodes."""
         self.add_namespace_to_graph(graph)
 
         for node, drug_model in list(self.iter_drugs(graph)):
@@ -504,6 +505,7 @@ class Manager(AbstractManager, FlaskMixin, BELManagerMixin, BELNamespaceManagerM
                 graph.add_equivalence(node, drug_model.as_inchi_bel())
 
     def enrich_drug_equivalences(self, graph: BELGraph) -> None:
+        """Enrich drugs in the graph with their equivalent nodes."""
         self.add_namespace_to_graph(graph)
 
         for node, drug_model in list(self.iter_drugs(graph)):
@@ -532,6 +534,7 @@ class Manager(AbstractManager, FlaskMixin, BELManagerMixin, BELNamespaceManagerM
                 # TODO there are plenty more. implement as other bio2bel repositories need
 
     def enrich_drugs(self, graph: BELGraph) -> None:
+        """Enrich drugs in the graph with their targets."""
         self.add_namespace_to_graph(graph)
 
         for node_data, drug_model in list(self.iter_drugs(graph)):
@@ -539,7 +542,7 @@ class Manager(AbstractManager, FlaskMixin, BELManagerMixin, BELNamespaceManagerM
                 dpi.add_to_graph(graph)
 
     def to_bel(self) -> BELGraph:
-        """Export drugbank as BEL."""
+        """Export DrugBank as BEL."""
         graph = BELGraph(
             name='DrugBank',
             version='5.1',
