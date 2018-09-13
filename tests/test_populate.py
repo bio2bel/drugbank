@@ -3,9 +3,10 @@
 """Suites for testing the populated database."""
 
 from pybel import BELGraph
+from pybel.constants import CITATION, CITATION_REFERENCE, CITATION_TYPE, CITATION_TYPE_PUBMED
 from tests.constants import PopulatedTemporaryCacheClassMixin
 
-from pybel.constants import RELATION, CITATION, CITATION_TYPE, CITATION_REFERENCE, CITATION_TYPE_PUBMED
+
 class TestPopulation(PopulatedTemporaryCacheClassMixin):
     """Tests the database is populated correctly."""
 
@@ -15,12 +16,14 @@ class TestPopulation(PopulatedTemporaryCacheClassMixin):
         self.assertLessEqual(23, self.manager.count_articles())
 
     def test_article(self):
+        """Test lookup of an article"""
         article = self.manager.get_article_by_pmid('10505536')
         self.assertIsNotNone(article)
         dpis = list(article.drug_protein_interactions)
         self.assertNotEqual(0, len(dpis))
 
     def test_bel(self):
+        """Test adding a DTI to a graph."""
         article = self.manager.get_article_by_pmid('10505536')
 
         drug_protein_interaction = article.drug_protein_interactions.all()[0]
@@ -37,7 +40,7 @@ class TestPopulation(PopulatedTemporaryCacheClassMixin):
         drug_protein_interaction.add_to_graph(graph)
 
         self.assertEqual(2, graph.number_of_nodes())
-        self.assertEqual(1, graph.number_of_edges())
+        self.assertEqual(6, graph.number_of_edges())
 
         _, _, data = list(graph.edges(data=True))[0]
 
