@@ -5,18 +5,18 @@
 import json
 import logging
 import os
-from collections import Counter, defaultdict
-from typing import Dict, Iterable, List, Optional, Tuple
-
-import bio2bel_hgnc
 import time
-from sqlalchemy import func
-from tqdm import tqdm
-
 from bio2bel import AbstractManager
 from bio2bel.manager.bel_manager import BELManagerMixin
 from bio2bel.manager.flask_manager import FlaskMixin
 from bio2bel.manager.namespace_manager import BELNamespaceManagerMixin
+from bio2bel_uniprot import get_slim_mappings_df
+from collections import Counter, defaultdict
+from sqlalchemy import func
+from tqdm import tqdm
+from typing import Dict, Iterable, List, Mapping, Optional, Tuple
+
+import bio2bel_hgnc
 from pybel import BELGraph
 from pybel.constants import ABUNDANCE, FUNCTION, IDENTIFIER, NAME, NAMESPACE, PROTEIN
 from pybel.dsl import BaseEntity, abundance
@@ -238,34 +238,35 @@ class Manager(AbstractManager, FlaskMixin, BELManagerMixin, BELNamespaceManagerM
         self.session.add(m)
         return m
 
-    def _create_drug_protein_interaction(self, drug_model, d):
-        """
-
-        :param dict d:
-        :return: DrugProteinInteraction
-        """
+    def _create_drug_protein_interaction(self, drug_model: Drug, data: Mapping) -> DrugProteinInteraction:
         protein = self.get_or_create_protein(
-            uniprot_id=d['uniprot_id'],
-            species=self.get_or_create_species(d['organism']),
-            name=d.get('name'),
-            hgnc_id=d.get('hgnc_id')
+            uniprot_id=data['uniprot_id'],
+            species=self.get_or_create_species(data['organism']),
+            name=data.get('name'),
+            hgnc_id=data.get('hgnc_id')
         )
 
         dpi = DrugProteinInteraction(
             drug=drug_model,
             protein=protein,
-            known_action=(d['known_action'] == 'yes'),
-            actions=[self.get_or_create_action(name.strip().lower()) for name in d.get('actions', [])],
-            articles=[self.get_or_create_article(pubmed_id) for pubmed_id in d.get('articles', [])],
-            category=d['category'],
+            known_action=(data['known_action'] == 'yes'),
+            actions=[
+                self.get_or_create_action(name.strip().lower())
+                for name in data.get('actions', [])
+            ],
+            articles=[
+                self.get_or_create_article(pubmed_id)
+                for pubmed_id in data.get('articles', [])
+            ],
+            category=data['category'],
         )
         self.session.add(dpi)
         return dpi
 
-    def populate(self, url=None):
+    def populate(self, url: Optional[str] = None) -> None:
         """Populates DrugBank
 
-        :param Optional[str] url: Path to the DrugBank XML
+        :param url: Path to the DrugBank XML
         """
         root = get_xml_root(url=url)
 

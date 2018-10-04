@@ -10,7 +10,7 @@ from sqlalchemy.orm import backref, relationship
 
 from pybel import BELGraph
 from pybel.constants import REGULATES
-from pybel.dsl import BaseEntity, abundance, protein
+from pybel.dsl import BaseEntity, abundance, activity, protein
 from .constants import MODULE_NAME
 from .patent_utils import download_google_patents
 
@@ -98,8 +98,10 @@ PATENT_PREFIX_MAP = {
 
 class Type(Base):
     """Represents the type of a drug - either small molecule or biologic."""
+
     __tablename__ = TYPE_TABLE_NAME
     id = Column(Integer, primary_key=True)
+
     name = Column(String(255), unique=True, index=True, nullable=False)
 
     def __repr__(self):
@@ -108,8 +110,8 @@ class Type(Base):
 
 class Drug(Base):
     """Represents a drug."""
-    __tablename__ = DRUG_TABLE_NAME
 
+    __tablename__ = DRUG_TABLE_NAME
     id = Column(Integer, primary_key=True)
 
     type_id = Column(Integer, ForeignKey(f'{TYPE_TABLE_NAME}.id'), nullable=False)
@@ -280,6 +282,7 @@ class Protein(Base):
     uniprot_accession = Column(String(32))
     name = Column(String(255))
     hgnc_id = Column(String(32))
+    entrez_id = Column(String(32))
 
     def __repr__(self):
         return self.uniprot_id
@@ -288,9 +291,7 @@ class Protein(Base):
         return protein(namespace='hgnc', identifier=self.hgnc_id)
 
     def as_bel(self) -> protein:
-        if self.hgnc_id:
-            return self.as_bel_hgnc()
-
+        """Serialize as a PyBEL node with the UniProt namespace."""
         return protein(namespace='uniprot', identifier=self.uniprot_id)
 
 
@@ -343,8 +344,8 @@ class DrugProteinInteraction(Base):
                 evidence='From DrugBank',
                 annotations={
                     'bio2bel': MODULE_NAME,
-                }
-
+                },
+                object_modifier=activity(),
             )
             for article in self.articles
         }
