@@ -170,7 +170,7 @@ class Manager(AbstractManager, FlaskMixin, BELManagerMixin, BELNamespaceManagerM
 
     def is_populated(self) -> bool:
         """Check if the database is populated by counting the drugs."""
-        return 0 != self.count_drugs()
+        return 0 < self.count_drugs()
 
     def get_protein_by_uniprot_id(self, uniprot_id: str) -> Optional[Protein]:
         return self.session.query(Protein).filter(Protein.uniprot_id == uniprot_id).one_or_none()
@@ -264,11 +264,11 @@ class Manager(AbstractManager, FlaskMixin, BELManagerMixin, BELNamespaceManagerM
         return dpi
 
     def populate(self, url: Optional[str] = None) -> None:
-        """Populates DrugBank
+        """Populate DrugBank.
 
         :param url: Path to the DrugBank XML
         """
-        root = get_xml_root(url=url)
+        root = get_xml_root(path=url)
 
         log.info('building models')
 
@@ -321,11 +321,8 @@ class Manager(AbstractManager, FlaskMixin, BELManagerMixin, BELNamespaceManagerM
         self.session.commit()
         log.info('committed models in %.2f seconds', time.time() - t)
 
-    def count_drugs(self):
-        """Count the number of drugs in the database
-
-        :rtype: int
-        """
+    def count_drugs(self) -> int:
+        """Count the number of drugs in the database."""
         return self._count_model(Drug)
 
     def list_drugs(self) -> List[Drug]:
@@ -395,20 +392,14 @@ class Manager(AbstractManager, FlaskMixin, BELManagerMixin, BELNamespaceManagerM
         return self._count_model(DrugProteinInteraction)
 
     def list_drug_protein_interactions(self) -> List[DrugProteinInteraction]:
-        """List drug-protein interactions
-
-        :rtype: list[DrugProteinInteraction]
-        """
+        """List drug-protein interactions."""
         return self._list_model(DrugProteinInteraction)
 
     def count_articles(self) -> int:
         return self._count_model(Article)
 
     def summarize(self) -> Dict[str, int]:
-        """Summarize the database.
-
-        :rtype: dict[str,int]
-        """
+        """Summarize the database."""
         return dict(
             drugs=self.count_drugs(),
             types=self.count_types(),
@@ -429,14 +420,19 @@ class Manager(AbstractManager, FlaskMixin, BELManagerMixin, BELNamespaceManagerM
         return drug.drugbank_id
 
     def _create_namespace_entry_from_model(self, model: Drug, namespace: Namespace) -> NamespaceEntry:
-        return NamespaceEntry(encoding='A', name=model.name, identifier=model.drugbank_id, namespace=namespace)
+        return NamespaceEntry(
+            encoding='A',
+            name=model.name,
+            identifier=model.drugbank_id,
+            namespace=namespace,
+        )
 
-    def lookup_target(self, data: BaseEntity) -> Optional[Protein]:
-        namespace = data.get(NAMESPACE)
-        if data[FUNCTION] != PROTEIN or namespace is None:
+    def lookup_target(self, node: BaseEntity) -> Optional[Protein]:
+        namespace = node.get(NAMESPACE)
+        if node[FUNCTION] != PROTEIN or namespace is None:
             return
 
-        identifier = data.get(IDENTIFIER)
+        identifier = node.get(IDENTIFIER)
         if namespace.lower() == 'hgnc' and identifier:
             return self.get_protein_by_hgnc_id(identifier)
 
@@ -491,7 +487,7 @@ class Manager(AbstractManager, FlaskMixin, BELManagerMixin, BELNamespaceManagerM
             if name is not None and name.startswith('DB'):
                 return self.get_drug_by_drugbank_id(name)
 
-    def iter_drugs(self, graph) -> Iterable[Tuple[BaseEntity, Drug]]:
+    def iter_drugs(self, graph: BELGraph) -> Iterable[Tuple[BaseEntity, Drug]]:
         for node in graph:
             drug_model = self.lookup_drug(node)
             if drug_model is not None:
@@ -643,10 +639,7 @@ class Manager(AbstractManager, FlaskMixin, BELManagerMixin, BELNamespaceManagerM
         return dict(rv)
 
     def get_interactions_by_hgnc_id(self, hgnc_id: str) -> List[DrugProteinInteraction]:
-        """Get the drug targets for a given HGNC identifier.
-
-        :param hgnc_id: HGNC identifier
-        """
+        """Get the drug targets for a given HGNC identifier."""
         protein = self.get_protein_by_hgnc_id(hgnc_id)
 
         if not protein:

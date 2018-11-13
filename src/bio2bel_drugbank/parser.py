@@ -1,12 +1,15 @@
 # -*- coding: utf-8 -*-
 
+"""Parsers for Bio2BEL DrugBank."""
 
 import itertools as itt
-
 import logging
+import os
 import re
+import sys
 import time
 from datetime import datetime
+from typing import Optional
 from xml.etree import ElementTree
 
 from .constants import DRUGBANK_PATH
@@ -20,21 +23,40 @@ inchi_template = f"{ns}calculated-properties/{ns}property[{ns}kind='InChI']/{ns}
 pubmed_re = re.compile('pubmed/([0-9]+)')
 
 
-def get_path(url=None):
-    return url or DRUGBANK_PATH
+def get_path(path: Optional[str] = None) -> str:
+    """Get the path to the DrugBank data."""
+    if path is not None:
+        return path
+
+    if os.path.exists(DRUGBANK_PATH):
+        return DRUGBANK_PATH
+
+    log.critical("""DrugBank data not found.
+
+Unfortunately, the data for DrugBank is not available via an open HTTP(S) or FTP endpoint, so please follow these 
+steps to get it yourself:
+
+1. Make an account at: https://www.drugbank.ca
+2. Navigate to: https://www.drugbank.ca/releases/5-1-1/downloads/all-full-database
+3. Unzip the file that gets downloaded. There should be an XML called "full database.xml"
+4. Run the following command on the command line: `mkdir -p ~/.bio2bel/drugbank`. If you're specifying the Bio2BEL
+   directory through a config file or an environment variable, just make a "drugbank" folder there.
+5. Copy "full database.xml" into this folder.
+6. Resume business as usual (try `bio2bel_drugbank populate` now)""")
+    sys.exit(0)
 
 
-def get_xml_root(url=None):
-    """Get the XML parser root. Takes between 35-60 seconds.
+def get_xml_root(path: Optional[str] = None):
+    """Get the XML parser root.
 
-    :param Optional[str] url: A custom URL for drugbank XML file
-    :return:
+    Takes between 35-60 seconds.
+
+    :param path: A custom URL for DrugBank XML file
     """
-    url = get_path(url=url)
-
-    log.info('parsing drugbank at %s', url)
+    path = get_path(path=path)
+    log.info('parsing drugbank at %s', path)
     t = time.time()
-    tree = ElementTree.parse(url)
+    tree = ElementTree.parse(path)
     log.info('parsed drugbank in %.2f seconds', time.time() - t)
 
     return tree.getroot()
