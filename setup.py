@@ -38,6 +38,12 @@ EXTRAS_REQUIRE = {
         'flask',
         'flask-admin',
     ],
+    'docs': [
+        'sphinx',
+        'sphinx-rtd-theme',
+        'sphinx-click',
+        'sphinx-autodoc-typehints',
+    ],
 }
 ENTRY_POINTS = {
     'bio2bel': [
