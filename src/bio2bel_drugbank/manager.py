@@ -43,7 +43,7 @@ class Manager(AbstractManager, FlaskMixin, BELManagerMixin, BELNamespaceManagerM
 
     namespace_model = Drug
     identifiers_recommended = 'DrugBank'
-    identifiers_pattern = '^DB\d{5}$'
+    identifiers_pattern = r'^DB\d{5}$'
     identifiers_miriam = 'MIR:00000102'
     identifiers_namespace = 'drugbank'
     identifiers_url = 'http://identifiers.org/drugbank/'
@@ -68,10 +68,7 @@ class Manager(AbstractManager, FlaskMixin, BELManagerMixin, BELNamespaceManagerM
         return Base
 
     def get_type_by_name(self, name: str) -> Optional[Type]:
-        """Get a Type by name.
-
-        :param str name:
-        """
+        """Get a Type by name."""
         return self.session.query(Type).filter(Type.name == name).one_or_none()
 
     def get_or_create_type(self, name: str) -> Type:
@@ -90,6 +87,7 @@ class Manager(AbstractManager, FlaskMixin, BELManagerMixin, BELNamespaceManagerM
         return m
 
     def list_groups(self) -> List[Group]:
+        """List all chemical groups."""
         return self._list_model(Group)
 
     def get_group_by_name(self, name: str) -> Optional[Group]:
@@ -135,7 +133,7 @@ class Manager(AbstractManager, FlaskMixin, BELManagerMixin, BELNamespaceManagerM
         return self.session.query(Category).filter(Category.name == name).one_or_none()
 
     def get_or_create_category(self, name: str, **kwargs) -> Category:
-        """Gets or creates a Category by name."""
+        """Get or create a Category by name."""
         m = self.category_to_model.get(name)
         if m is not None:
             return m
@@ -150,7 +148,7 @@ class Manager(AbstractManager, FlaskMixin, BELManagerMixin, BELNamespaceManagerM
         return m
 
     def get_or_create_patent(self, country: str, patent_id: str, **kwargs) -> Patent:
-        """Gets or creates a Patent."""
+        """Get or creates a Patent."""
         m = self.patent_to_model.get((country, patent_id))
         if m is not None:
             return m
