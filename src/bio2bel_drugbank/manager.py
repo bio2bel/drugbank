@@ -269,9 +269,6 @@ class Manager(AbstractManager, FlaskMixin, BELManagerMixin, BELNamespaceManagerM
         :param url: Path to the DrugBank XML
         """
         root = get_xml_root(path=url)
-
-        log.info('building models')
-
         for drug_xml in tqdm(root, desc='Drugs'):
             drug = extract_drug_info(drug_xml)
 

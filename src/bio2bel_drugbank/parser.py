@@ -9,10 +9,12 @@ import re
 import sys
 import time
 from datetime import datetime
-from typing import Optional
+from typing import Mapping, Optional
 from xml.etree import ElementTree
 
-from .constants import DRUGBANK_PATH
+from tqdm import tqdm
+
+from bio2bel_drugbank.constants import DRUGBANK_PATH
 
 log = logging.getLogger(__name__)
 
@@ -178,3 +180,25 @@ def extract_protein_info(category, protein):
         row['hgnc_id'] = hgnc_ids[0][len('HGNC:'):]
 
     return row
+
+
+def get_pubchem_to_drugbank() -> Mapping[str, str]:
+    rv = {}
+    root = get_xml_root()
+    for drug_xml in tqdm(root, desc='Drugs'):
+        drug = extract_drug_info(drug_xml)
+        drugbank_id = drug['drugbank_id']
+        for xref in drug['xrefs']:
+            if xref['resource'] == 'PubChem Substance':
+                rv[xref['identifier']] = drugbank_id
+                break
+        else:
+            print(f'could not find pubchem for {drugbank_id}')
+
+    return rv
+
+if __name__ == '__main__':
+    x = get_pubchem_to_drugbank()
+    import json
+    with open('/Users/cthoyt/Desktop/pubchem_to_drugbank.json', 'w') as f:
+        json.dump(x, f)
