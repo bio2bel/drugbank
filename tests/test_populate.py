@@ -16,7 +16,7 @@ class TestPopulation(PopulatedTemporaryCacheClassMixin):
         self.assertLessEqual(23, self.manager.count_articles())
 
     def test_article(self):
-        """Test lookup of an article"""
+        """Test lookup of an article."""
         article = self.manager.get_article_by_pmid('10505536')
         self.assertIsNotNone(article)
         dpis = list(article.drug_protein_interactions)

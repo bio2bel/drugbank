@@ -1,15 +1,9 @@
 sudo: false
 cache: pip
 
-services:
-- mysql
-
 language: python
-python: 3.6
-
-env:
-  global:
-  - BIO2BEL_CONNECTION=mysql+pymysql://travis@localhost/bio2bel?charset=utf8'
+python:
+- 3.6
 
 stages:
   - lint
@@ -22,7 +16,9 @@ jobs:
     - stage: lint
       env: TOXENV=manifest
     - env: TOXENV=flake8
-    - env: TOXENV=pylint
+    - env: TOXENV=pyroma
+    - env: TOXENV=xenon
+    - env: TOXENV=mypy
     # docs stage
     - stage: docs
       env: TOXENV=doc8
@@ -34,22 +30,17 @@ jobs:
 
 matrix:
   allow_failures:
-      - env: TOXENV=pylint
-      - env: TOXENV=flake8
-
-before_install:
-- mysql -e 'CREATE DATABASE bio2bel CHARACTER SET utf8 COLLATE utf8_general_ci;'
-- mysql -e "GRANT ALL PRIVILEGES ON bio2bel.* to 'travis'@'%' WITH GRANT OPTION;"
+      - env: TOXENV=xenon
+      - env: TOXENV=mypy
 
 install:
-- pip install tox codecov coverage pymysql
+    - sh -c 'if [ "$TOXENV" = "py" ]; then pip install tox codecov coverage; else pip install tox; fi'
 
 script:
 - tox
 
 after_success:
-- tox -e coverage-report
-- codecov
+    - sh -c 'if [ "$TOXENV" = "py" ]; then tox -e coverage-report; codecov; fi'
 
 notifications:
   slack: pybel:n2KbWKBum3musnBg3L76gGwq

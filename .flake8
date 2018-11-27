@@ -1,0 +1,27 @@
+#########################
+# Flake8 Configuration  #
+# (.flake8)             #
+#########################
+[flake8]
+ignore = E501,F401,F403,D105
+exclude =
+    .tox,
+    .git,
+    __pycache__,
+    docs/source/conf.py,
+    build,
+    dist,
+    tests/fixtures/*,
+    *.pyc,
+    *.egg-info,
+    .cache,
+    .eggs
+max-complexity = 10
+import-order-style = pycharm
+application-import-names =
+    bio2bel_drugbank
+    bio2bel_uniprot
+    tests
+    bio2bel
+    pybel
+format = ${cyan}%(path)s${reset}:${yellow_bold}%(row)d${reset}:${green_bold}%(col)d${reset}: ${red_bold}%(code)s${reset} %(text)s

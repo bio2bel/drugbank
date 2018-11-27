@@ -11,6 +11,7 @@ import setuptools
 MODULE_NAME = 'drugbank'
 PACKAGES = setuptools.find_packages(where='src')
 META_PATH = os.path.join('src', f'bio2bel_{MODULE_NAME}', '__init__.py')
+KEYWORDS = ['Biological Expression Language', 'BEL', 'Systems Biology', 'Networks Biology']
 CLASSIFIERS = [
     'Development Status :: 4 - Beta',
     'Environment :: Console',
@@ -32,6 +33,7 @@ INSTALL_REQUIRES = [
     'tqdm',
     'beautifulsoup4',
     'requests',
+    'bio2bel_uniprot',
 ]
 EXTRAS_REQUIRE = {
     'web': [
@@ -97,9 +99,11 @@ if __name__ == '__main__':
         maintainer_email=find_meta('email'),
         license=find_meta('license'),
         classifiers=CLASSIFIERS,
+        keywords=KEYWORDS,
         packages=PACKAGES,
         package_dir={'': 'src'},
         install_requires=INSTALL_REQUIRES,
         extras_require=EXTRAS_REQUIRE,
         entry_points=ENTRY_POINTS,
+        zip_safe=False,
     )
