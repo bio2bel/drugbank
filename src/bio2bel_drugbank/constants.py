@@ -6,7 +6,7 @@ import os
 
 from bio2bel.utils import get_connection, get_data_dir
 
-VERSION = '0.1.1-dev'
+VERSION = '0.1.1'
 
 MODULE_NAME = 'drugbank'
 DATA_DIR = get_data_dir(MODULE_NAME)
