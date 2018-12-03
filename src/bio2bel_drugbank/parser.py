@@ -48,7 +48,7 @@ steps to get it yourself:
     sys.exit(0)
 
 
-def get_xml_root(path: Optional[str] = None):
+def get_xml_root(path: Optional[str] = None) -> ElementTree.Element:
     """Get the XML parser root.
 
     Takes between 35-60 seconds.
@@ -64,7 +64,8 @@ def get_xml_root(path: Optional[str] = None):
     return tree.getroot()
 
 
-def extract_drug_info(drug_xml):
+def extract_drug_info(drug_xml: ElementTree.Element):
+    """Extract information from an XML element representing a drug."""
     assert drug_xml.tag == f'{ns}drug'
 
     row = {
@@ -183,6 +184,7 @@ def extract_protein_info(category, protein):
 
 
 def get_pubchem_to_drugbank() -> Mapping[str, str]:
+    """Get a mapping from PubChem Substances to DrugBank identifiers."""
     rv = {}
     root = get_xml_root()
     for drug_xml in tqdm(root, desc='Drugs'):
@@ -197,8 +199,10 @@ def get_pubchem_to_drugbank() -> Mapping[str, str]:
 
     return rv
 
+
 if __name__ == '__main__':
     x = get_pubchem_to_drugbank()
     import json
+
     with open('/Users/cthoyt/Desktop/pubchem_to_drugbank.json', 'w') as f:
         json.dump(x, f)

@@ -12,7 +12,7 @@ from typing import Optional, Set
 import requests
 from bs4 import BeautifulSoup
 
-LINK_PATTERN = "https?:\/\/patentimages\.storage\.googleapis\.com\/.+\/([A-z0-9]+\.pdf)"
+LINK_PATTERN = r"https?:\/\/patentimages\.storage\.googleapis\.com\/.+\/([A-z0-9]+\.pdf)"
 LINK_RE = re.compile(LINK_PATTERN, re.IGNORECASE)
 
 prefix_map = {

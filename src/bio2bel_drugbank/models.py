@@ -128,25 +128,29 @@ class Drug(Base):
         return self.name
 
     def as_bel(self) -> abundance:
+        """Get this drug as a PyBEL abundance identified by its DrugBank identifier."""
         return abundance(namespace=MODULE_NAME, name=self.name, identifier=self.drugbank_id)
 
     def as_inchi_bel(self) -> abundance:
+        """Get this drug as a PyBEL abundance identified by InChI."""
         # https://www.ebi.ac.uk/miriam/main/datatypes/MIR:00000383
         return abundance(namespace='inchi', name=self.inchi, identifier=self.inchi)
 
     def as_inchikey_bel(self) -> abundance:
+        """Get this drug as a PyBEL abundance identified by InChI-key."""
         # https://www.ebi.ac.uk/miriam/main/datatypes/MIR:00000387
         return abundance(namespace='inchikey', name=self.inchikey, identifier=self.inchikey)
 
     def as_cas_bel(self) -> abundance:
+        """Get this drug as a PyBEL abundance identified by its CAS identifier."""
         # https://www.ebi.ac.uk/miriam/main/datatypes/MIR:00000237
         return abundance(namespace='cas', name=self.cas_number, identifier=self.cas_number)
 
 
 class DrugXref(Base):
     """Represents a drug's cross-reference to another database."""
-    __tablename__ = DRUG_XREF_TABLE_NAME
 
+    __tablename__ = DRUG_XREF_TABLE_NAME
     id = Column(Integer, primary_key=True)
 
     resource = Column(String(255), nullable=False)
@@ -165,8 +169,8 @@ class DrugXref(Base):
 
 class Patent(Base):
     """Represents a patent."""
-    __tablename__ = PATENT_TABLE_NAME
 
+    __tablename__ = PATENT_TABLE_NAME
     id = Column(Integer, primary_key=True)
 
     patent_id = Column(String(255), nullable=False, unique=True, index=True)
@@ -216,8 +220,8 @@ class Alias(Base):
 
 class AtcCode(Base):
     """Represents an ATC code of a drug."""
-    __tablename__ = ATC_TABLE_NAME
 
+    __tablename__ = ATC_TABLE_NAME
     id = Column(Integer, primary_key=True)
 
     name = Column(String(255))
@@ -231,8 +235,8 @@ class AtcCode(Base):
 
 class Group(Base):
     """Represents a drug group."""
-    __tablename__ = GROUP_TABLE_NAME
 
+    __tablename__ = GROUP_TABLE_NAME
     id = Column(Integer, primary_key=True)
 
     name = Column(String(255))
@@ -245,8 +249,8 @@ class Group(Base):
 
 class Category(Base):
     """Represents a drug category."""
-    __tablename__ = CATEGORY_TABLE_NAME
 
+    __tablename__ = CATEGORY_TABLE_NAME
     id = Column(Integer, primary_key=True)
 
     name = Column(String(255))
@@ -260,9 +264,10 @@ class Category(Base):
 
 class Species(Base):
     """Represents a species."""
-    __tablename__ = SPECIES_TABLE_NAME
 
+    __tablename__ = SPECIES_TABLE_NAME
     id = Column(Integer, primary_key=True)
+
     name = Column(String(255), unique=True, index=True, nullable=False)
 
     def __repr__(self):
@@ -271,8 +276,8 @@ class Species(Base):
 
 class Protein(Base):
     """Represents a protein."""
-    __tablename__ = PROTEIN_TABLE_NAME
 
+    __tablename__ = PROTEIN_TABLE_NAME
     id = Column(Integer, primary_key=True)
 
     species_id = Column(Integer, ForeignKey(f'{SPECIES_TABLE_NAME}.id'), nullable=False)
@@ -297,9 +302,10 @@ class Protein(Base):
 
 class Action(Base):
     """Represents the action a drug takes in a drug-protein interaction."""
-    __tablename__ = ACTION_TABLE_NAME
 
+    __tablename__ = ACTION_TABLE_NAME
     id = Column(Integer, primary_key=True)
+
     name = Column(String(255), unique=True, index=True, nullable=False)
 
 
@@ -307,15 +313,15 @@ class Article(Base):
     """Represents an article in PubMed."""
 
     __tablename__ = ARTICLE_TABLE_NAME
-
     id = Column(Integer, primary_key=True)
+
     pubmed_id = Column(String(255), unique=True, nullable=False, index=True)
 
 
 class DrugProteinInteraction(Base):
     """Represents an interaction between a drug and a protein."""
-    __tablename__ = DRUG_PROTEIN_TABLE_NAME
 
+    __tablename__ = DRUG_PROTEIN_TABLE_NAME
     id = Column(Integer, primary_key=True)
 
     drug_id = Column(Integer, ForeignKey(f'{DRUG_TABLE_NAME}.id'))
