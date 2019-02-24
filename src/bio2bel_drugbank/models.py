@@ -124,6 +124,8 @@ class Drug(Base):
     inchi = Column(Text, nullable=True)
     inchikey = Column(String(255), nullable=True)
 
+    bel_encoding = 'A'
+
     def __repr__(self):
         return self.name
 
