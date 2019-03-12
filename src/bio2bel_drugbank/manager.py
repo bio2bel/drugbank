@@ -6,17 +6,18 @@ import json
 import logging
 import os
 import time
+from collections import Counter, defaultdict
+from typing import Dict, Iterable, List, Mapping, Optional, Tuple
+
+import networkx as nx
+from sqlalchemy import func
+from tqdm import tqdm
+
+import bio2bel_hgnc
 from bio2bel import AbstractManager
 from bio2bel.manager.bel_manager import BELManagerMixin
 from bio2bel.manager.flask_manager import FlaskMixin
 from bio2bel.manager.namespace_manager import BELNamespaceManagerMixin
-from bio2bel_uniprot import get_slim_mappings_df
-from collections import Counter, defaultdict
-from sqlalchemy import func
-from tqdm import tqdm
-from typing import Dict, Iterable, List, Mapping, Optional, Tuple
-
-import bio2bel_hgnc
 from pybel import BELGraph
 from pybel.constants import ABUNDANCE, FUNCTION, IDENTIFIER, NAME, NAMESPACE, PROTEIN
 from pybel.dsl import BaseEntity, abundance
@@ -483,10 +484,19 @@ class Manager(AbstractManager, FlaskMixin, BELManagerMixin, BELNamespaceManagerM
                 return self.get_drug_by_drugbank_id(name)
 
     def iter_drugs(self, graph: BELGraph) -> Iterable[Tuple[BaseEntity, Drug]]:
+        """Iterate over the drugs in the graph."""
         for node in graph:
             drug_model = self.lookup_drug(node)
             if drug_model is not None:
                 yield node, drug_model
+
+    def normalize_drugs(self, graph: BELGraph) -> None:
+        """Normalize the drugs in the graph."""
+        mapping = {
+            node: drug_model.as_bel()
+            for node, drug_model in self.iter_drugs(graph)
+        }
+        nx.relabel_nodes(graph, mapping, copy=False)
 
     def enrich_drug_inchi(self, graph: BELGraph) -> None:
         """Enrich drugs in the graph with their InChI equivalent nodes."""
