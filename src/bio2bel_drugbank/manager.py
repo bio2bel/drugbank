@@ -7,8 +7,9 @@ import logging
 import os
 import time
 from collections import Counter, defaultdict
-from typing import Dict, Iterable, List, Mapping, Optional, Tuple
+from typing import Dict, Iterable, List, Mapping, Optional, TextIO, Tuple
 
+import click
 import networkx as nx
 from sqlalchemy import func
 from tqdm import tqdm
@@ -38,7 +39,7 @@ _dti_symbols_cache_path = os.path.join(DATA_DIR, 'drug_to_gene_symbols.json')
 
 
 class Manager(AbstractManager, FlaskMixin, BELManagerMixin, BELNamespaceManagerMixin):
-    """Manager for Bio2BEL DrugBank."""
+    """Drug-target interactions."""
 
     module_name = MODULE_NAME
 
@@ -48,6 +49,8 @@ class Manager(AbstractManager, FlaskMixin, BELManagerMixin, BELNamespaceManagerM
     identifiers_miriam = 'MIR:00000102'
     identifiers_namespace = 'drugbank'
     identifiers_url = 'http://identifiers.org/drugbank/'
+
+    edge_model = DrugProteinInteraction
 
     flask_admin_models = [Drug, Alias, AtcCode, Category, Group, Type, Patent, DrugXref, Species, Protein,
                           DrugProteinInteraction, Action, Article]
@@ -654,3 +657,45 @@ class Manager(AbstractManager, FlaskMixin, BELManagerMixin, BELNamespaceManagerM
             interaction
             for interaction in protein.drug_interactions
         ]
+
+    @classmethod
+    def get_cli(cls) -> click.Group:
+        """Append the lister."""
+        main = super().get_cli()
+
+        @main.command()
+        @click.option('-f', '--file', type=click.File('w'))
+        @click.pass_obj
+        def export(manager: Manager, file: TextIO):
+            """Export DTIs as a tall/skinny."""
+            print(
+                'drug_drugbank_id',
+                'drug_drugbank_name',
+                'drug_type',
+                'drug_drugbank_inchikey',
+                'target_entrez_id',
+                'target_hgnc_id',
+                'target_uniprot_id',
+                'target_uniprot_accession',
+                'target_name',
+                'category',
+                sep='\t',
+                file=file,
+            )
+            for dpi in tqdm(manager.list_drug_protein_interactions(), total=manager.count_drug_protein_interactions()):
+                print(
+                    dpi.drug.drugbank_id,
+                    dpi.drug.name,
+                    dpi.drug.type.name,
+                    dpi.drug.inchikey,
+                    dpi.protein.entrez_id,
+                    dpi.protein.hgnc_id,
+                    dpi.protein.uniprot_id,
+                    dpi.protein.uniprot_accession,
+                    dpi.protein.name,
+                    dpi.category,
+                    sep='\t',
+                    file=file,
+                )
+
+        return main
