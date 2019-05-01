@@ -42,6 +42,7 @@ class Manager(AbstractManager, FlaskMixin, BELManagerMixin, BELNamespaceManagerM
     """Drug-target interactions."""
 
     module_name = MODULE_NAME
+    _base = Base
 
     namespace_model = Drug
     identifiers_recommended = 'DrugBank'
@@ -66,10 +67,6 @@ class Manager(AbstractManager, FlaskMixin, BELManagerMixin, BELNamespaceManagerM
         self.action_to_model = {}
         self.pmid_to_model = {}
         self.uniprot_id_to_protein = {}
-
-    @property
-    def _base(self):
-        return Base
 
     def get_type_by_name(self, name: str) -> Optional[Type]:
         """Get a Type by name."""
