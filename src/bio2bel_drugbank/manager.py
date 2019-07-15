@@ -11,6 +11,10 @@ from typing import Dict, Iterable, List, Mapping, Optional, TextIO, Tuple
 
 import click
 import networkx as nx
+from pybel import BELGraph
+from pybel.constants import ABUNDANCE, FUNCTION, IDENTIFIER, NAME, NAMESPACE, PROTEIN
+from pybel.dsl import BaseEntity, abundance
+from pybel.manager.models import Namespace, NamespaceEntry
 from sqlalchemy import func
 from tqdm import tqdm
 
@@ -19,10 +23,6 @@ from bio2bel import AbstractManager
 from bio2bel.manager.bel_manager import BELManagerMixin
 from bio2bel.manager.flask_manager import FlaskMixin
 from bio2bel.manager.namespace_manager import BELNamespaceManagerMixin
-from pybel import BELGraph
-from pybel.constants import ABUNDANCE, FUNCTION, IDENTIFIER, NAME, NAMESPACE, PROTEIN
-from pybel.dsl import BaseEntity, abundance
-from pybel.manager.models import Namespace, NamespaceEntry
 from .constants import DATA_DIR, MODULE_NAME
 from .models import (
     Action, Alias, Article, AtcCode, Base, Category, Drug, DrugProteinInteraction, DrugXref, Group, Patent, Protein,
@@ -242,7 +242,8 @@ class Manager(AbstractManager, FlaskMixin, BELManagerMixin, BELNamespaceManagerM
             uniprot_id=data['uniprot_id'],
             species=self.get_or_create_species(data['organism']),
             name=data.get('name'),
-            hgnc_id=data.get('hgnc_id')
+            hgnc_id=data.get('hgnc_id'),
+            uniprot_accession=data.get('uniprot_accession'),
         )
 
         dpi = DrugProteinInteraction(
@@ -268,6 +269,10 @@ class Manager(AbstractManager, FlaskMixin, BELManagerMixin, BELNamespaceManagerM
         :param url: Path to the DrugBank XML
         """
         root = get_xml_root(path=url)
+
+        # TODO get UniProt id to accession dictionary using Bio2BEL uniprot
+        # TODO get HGNC identifier to symbol using Bio2BEL HGNC
+
         for drug_xml in tqdm(root, desc='Drugs'):
             drug = extract_drug_info(drug_xml)
 
@@ -484,18 +489,23 @@ class Manager(AbstractManager, FlaskMixin, BELManagerMixin, BELNamespaceManagerM
                 return self.get_drug_by_drugbank_id(name)
             logging.warning(f'could not normalize {node} ({identifier}:{name})')
 
-    def iter_drugs(self, graph: BELGraph) -> Iterable[Tuple[BaseEntity, Drug]]:
+    def iter_drugs(self, graph: BELGraph, use_tqdm: bool = False) -> Iterable[Tuple[BaseEntity, Drug]]:
         """Iterate over the drugs in the graph."""
-        for node in graph:
+        it = (
+            tqdm(graph, desc='DrugBank chemicals')
+            if use_tqdm else
+            graph
+        )
+        for node in it:
             drug_model = self.lookup_drug(node)
             if drug_model is not None:
                 yield node, drug_model
 
-    def normalize_drugs(self, graph: BELGraph) -> None:
+    def normalize_drugs(self, graph: BELGraph, use_tqdm: bool = False) -> None:
         """Normalize the drugs in the graph."""
         mapping = {
             node: drug_model.as_bel()
-            for node, drug_model in self.iter_drugs(graph)
+            for node, drug_model in self.iter_drugs(graph, use_tqdm=use_tqdm)
         }
         nx.relabel_nodes(graph, mapping, copy=False)
 

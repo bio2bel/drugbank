@@ -7,7 +7,7 @@ from typing import Set
 from sqlalchemy import Boolean, Column, Date, ForeignKey, Integer, String, Table, Text, and_
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import backref, relationship
-
+import pybel.dsl
 from pybel import BELGraph
 from pybel.constants import REGULATES
 from pybel.dsl import BaseEntity, abundance, activity, protein
@@ -294,12 +294,19 @@ class Protein(Base):
     def __repr__(self):
         return self.uniprot_id
 
-    def as_bel_hgnc(self) -> protein:
-        return protein(namespace='hgnc', identifier=self.hgnc_id)
+    def as_bel_hgnc(self) -> pybel.dsl.Protein:
+        return pybel.dsl.Protein(
+            namespace='hgnc',
+            identifier=self.hgnc_id,
+        )
 
-    def as_bel(self) -> protein:
+    def as_bel(self) -> pybel.dsl.Protein:
         """Serialize as a PyBEL node with the UniProt namespace."""
-        return protein(namespace='uniprot', identifier=self.uniprot_id)
+        return pybel.dsl.Protein(
+            namespace='uniprot',
+            name=self.uniprot_accession,
+            identifier=self.uniprot_id,
+        )
 
 
 class Action(Base):
