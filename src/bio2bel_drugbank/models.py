@@ -2,15 +2,15 @@
 
 """Database models for bio2bel_drugbank."""
 
-from typing import Set
+from typing import Optional, Set
 
 from sqlalchemy import Boolean, Column, Date, ForeignKey, Integer, String, Table, Text, and_
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import backref, relationship
+
 import pybel.dsl
 from pybel import BELGraph
-from pybel.constants import REGULATES
-from pybel.dsl import BaseEntity, abundance, activity, protein
+from pybel.dsl import Abundance, BaseEntity, activity
 from .constants import MODULE_NAME
 from .patent_utils import download_google_patents
 
@@ -121,32 +121,54 @@ class Drug(Base):
     cas_number = Column(String(255), nullable=True)
     name = Column(String(1024), nullable=False)
     description = Column(Text, nullable=True)
+    smiles = Column(Text, nullable=True)
     inchi = Column(Text, nullable=True)
     inchikey = Column(String(255), nullable=True)
+    chebi_id = Column(String(255), nullable=True)
+    pubchem_compound_id = Column(String(255), nullable=True)
 
     bel_encoding = 'A'
 
     def __repr__(self):
         return self.name
 
-    def as_bel(self) -> abundance:
+    def as_bel(self, namespace: Optional[str] = None) -> Abundance:
         """Get this drug as a PyBEL abundance identified by its DrugBank identifier."""
-        return abundance(namespace=MODULE_NAME, name=self.name, identifier=self.drugbank_id)
+        if namespace is None or namespace == 'drugbank':
+            return self.as_drugbank_bel()
+        elif namespace == 'pubchem.compound':
+            return self.as_pubchem_compound_bel()
+        elif namespace == 'inchi':
+            return self.as_inchi_bel()
+        elif namespace == 'smiles':
+            return self.as_smiles_bel()
 
-    def as_inchi_bel(self) -> abundance:
+    def as_drugbank_bel(self) -> Abundance:
+        """Get this drug as a PyBEL abundance identified by its DrugBank identifier."""
+        return Abundance(namespace=MODULE_NAME, name=self.name, identifier=self.drugbank_id)
+
+    def as_pubchem_compound_bel(self) -> Abundance:
+        """Get this drug as a PyBEL abundance identified by PubChem."""
+        return Abundance(namespace='pubchem.compound', identifier=self.pubchem_compound_id)
+
+    def as_smiles_bel(self) -> Abundance:
+        """Get this drug as a PyBEL abundance identified by SMILES."""
+        return Abundance(namespace='smiles', identifier=self.smiles)
+
+    def as_inchi_bel(self) -> Abundance:
         """Get this drug as a PyBEL abundance identified by InChI."""
         # https://www.ebi.ac.uk/miriam/main/datatypes/MIR:00000383
-        return abundance(namespace='inchi', name=self.inchi, identifier=self.inchi)
+        return Abundance(namespace='inchi', identifier=self.inchi)
 
-    def as_inchikey_bel(self) -> abundance:
+    def as_inchikey_bel(self) -> Abundance:
         """Get this drug as a PyBEL abundance identified by InChI-key."""
         # https://www.ebi.ac.uk/miriam/main/datatypes/MIR:00000387
-        return abundance(namespace='inchikey', name=self.inchikey, identifier=self.inchikey)
+        return Abundance(namespace='inchikey', identifier=self.inchikey)
 
-    def as_cas_bel(self) -> abundance:
+    def as_cas_bel(self) -> Abundance:
         """Get this drug as a PyBEL abundance identified by its CAS identifier."""
         # https://www.ebi.ac.uk/miriam/main/datatypes/MIR:00000237
-        return abundance(namespace='cas', name=self.cas_number, identifier=self.cas_number)
+        return Abundance(namespace='cas', identifier=self.cas_number)
 
 
 class DrugXref(Base):
@@ -193,7 +215,7 @@ class Patent(Base):
             country=self.country,
             approved_date=str(self.approved),
             expires_date=str(self.expires),
-            pediatric_extension=self.pediatric_extension
+            pediatric_extension=self.pediatric_extension,
         )
 
     @property
@@ -271,6 +293,7 @@ class Species(Base):
     id = Column(Integer, primary_key=True)
 
     name = Column(String(255), unique=True, index=True, nullable=False)
+    tax_id = Column(String(255))
 
     def __repr__(self):
         return self.name
@@ -285,10 +308,11 @@ class Protein(Base):
     species_id = Column(Integer, ForeignKey(f'{SPECIES_TABLE_NAME}.id'), nullable=False)
     species = relationship(Species)
 
+    name = Column(String(255))
     uniprot_id = Column(String(32))
     uniprot_accession = Column(String(32))
-    name = Column(String(255))
     hgnc_id = Column(String(32))
+    hgnc_symbol = Column(String(32))
     entrez_id = Column(String(32))
 
     def __repr__(self):
@@ -298,15 +322,22 @@ class Protein(Base):
         return pybel.dsl.Protein(
             namespace='hgnc',
             identifier=self.hgnc_id,
+            name=self.hgnc_symbol,
         )
 
-    def as_bel(self) -> pybel.dsl.Protein:
+    def as_uniprot_bel(self) -> pybel.dsl.Protein:
         """Serialize as a PyBEL node with the UniProt namespace."""
         return pybel.dsl.Protein(
             namespace='uniprot',
             name=self.uniprot_accession,
             identifier=self.uniprot_id,
         )
+
+    def as_bel(self, namespace: Optional[str] = None) -> pybel.dsl.Protein:
+        """Serialize as a PyBEL node with the UniProt namespace."""
+        if namespace == 'hgnc':
+            return self.as_bel_hgnc()
+        return self.as_uniprot_bel()
 
 
 class Action(Base):
@@ -340,6 +371,7 @@ class DrugProteinInteraction(Base):
     protein = relationship(Protein, backref=backref('drug_interactions'))
 
     category = Column(String(32), nullable=False)  # target, enzyme, etc...
+    type = Column(String(32), nullable=False)  # none, single, group
     known_action = Column(Boolean, nullable=False)
 
     actions = relationship(Action, secondary=dpi_action, lazy='dynamic',
@@ -348,13 +380,12 @@ class DrugProteinInteraction(Base):
     articles = relationship(Article, secondary=dpi_article, lazy='dynamic',
                             backref=backref('drug_protein_interactions', lazy='dynamic'))
 
-    def _add_to_graph(self, graph: BELGraph, u: BaseEntity, v: BaseEntity) -> Set[str]:
+    def _add_to_graph(self, graph: BELGraph, source: BaseEntity, target: BaseEntity) -> Set[str]:
         """Return the set of keys used to add these edges."""
         return {
-            graph.add_qualified_edge(
-                u,
-                v,
-                relation=REGULATES,
+            graph.add_regulates(
+                source,
+                target,
                 citation=article.pubmed_id,
                 evidence='From DrugBank',
                 annotations={
@@ -365,14 +396,18 @@ class DrugProteinInteraction(Base):
             for article in self.articles
         }
 
-    def add_to_graph(self, graph: BELGraph) -> Set[str]:
+    def add_to_graph(
+            self,
+            graph: BELGraph,
+            drug_namespace: Optional[str] = None,
+            target_namespace: Optional[str] = None,
+    ) -> Set[str]:
         """Add this interaction to the graph.
 
         :return: A set of the hashes of the edges that were added
         """
         # TODO update implementation to use actions
-
-        drug_bel = self.drug.as_bel()
-        protein_bel = self.protein.as_bel()
-
+        # TODO check if any proteins have several actions
+        drug_bel = self.drug.as_bel(namespace=drug_namespace)
+        protein_bel = self.protein.as_bel(namespace=target_namespace)
         return self._add_to_graph(graph, drug_bel, protein_bel)

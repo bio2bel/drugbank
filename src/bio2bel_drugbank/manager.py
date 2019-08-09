@@ -7,14 +7,11 @@ import logging
 import os
 import time
 from collections import Counter, defaultdict
-from typing import Dict, Iterable, List, Mapping, Optional, TextIO, Tuple
+from typing import Dict, Iterable, List, Optional, TextIO, Tuple
+
 
 import click
 import networkx as nx
-from pybel import BELGraph
-from pybel.constants import ABUNDANCE, FUNCTION, IDENTIFIER, NAME, NAMESPACE, PROTEIN
-from pybel.dsl import BaseEntity, abundance
-from pybel.manager.models import Namespace, NamespaceEntry
 from sqlalchemy import func
 from tqdm import tqdm
 
@@ -23,6 +20,10 @@ from bio2bel import AbstractManager
 from bio2bel.manager.bel_manager import BELManagerMixin
 from bio2bel.manager.flask_manager import FlaskMixin
 from bio2bel.manager.namespace_manager import BELNamespaceManagerMixin
+from pybel import BELGraph
+from pybel.constants import ABUNDANCE, FUNCTION, IDENTIFIER, NAME, NAMESPACE, PROTEIN
+from pybel.dsl import BaseEntity, abundance
+from pybel.manager.models import Namespace, NamespaceEntry
 from .constants import DATA_DIR, MODULE_NAME
 from .models import (
     Action, Alias, Article, AtcCode, Base, Category, Drug, DrugProteinInteraction, DrugXref, Group, Patent, Protein,
@@ -114,7 +115,7 @@ class Manager(AbstractManager, FlaskMixin, BELManagerMixin, BELNamespaceManagerM
         """Get a Species by name."""
         return self.session.query(Species).filter(Species.name == name).one_or_none()
 
-    def get_or_create_species(self, name: str) -> Species:
+    def get_or_create_species(self, name: str, tax_id: str) -> Species:
         """Get or create a Species by name."""
         m = self.species_to_model.get(name)
         if m is not None:
@@ -125,7 +126,7 @@ class Manager(AbstractManager, FlaskMixin, BELManagerMixin, BELNamespaceManagerM
             self.species_to_model[name] = m
             return m
 
-        m = self.species_to_model[name] = Species(name=name)
+        m = self.species_to_model[name] = Species(name=name, tax_id=tax_id)
         self.session.add(m)
         return m
 
@@ -237,31 +238,34 @@ class Manager(AbstractManager, FlaskMixin, BELManagerMixin, BELNamespaceManagerM
         self.session.add(m)
         return m
 
-    def _create_drug_protein_interaction(self, drug_model: Drug, data: Mapping) -> DrugProteinInteraction:
+    def _create_drug_protein_interaction(self, drug: Drug, polypeptide, target):
         protein = self.get_or_create_protein(
-            uniprot_id=data['uniprot_id'],
-            species=self.get_or_create_species(data['organism']),
-            name=data.get('name'),
-            hgnc_id=data.get('hgnc_id'),
-            uniprot_accession=data.get('uniprot_accession'),
+            name=polypeptide['name'],
+            uniprot_id=polypeptide['uniprot_id'],
+            uniprot_accession=polypeptide['uniprot_accession'],
+            species=self.get_or_create_species(
+                name=polypeptide['organism'],
+                tax_id=polypeptide['taxonomy'],
+            ),
+            hgnc_id=polypeptide.get('hgnc_id'),
+            hgnc_symbol=polypeptide.get('hgnc_symbol'),
         )
 
-        dpi = DrugProteinInteraction(
-            drug=drug_model,
+        drug.protein_interactions.append(DrugProteinInteraction(
+            drug=drug,
             protein=protein,
-            known_action=(data['known_action'] == 'yes'),
+            known_action=(target['known_action'] == 'yes'),
             actions=[
                 self.get_or_create_action(name.strip().lower())
-                for name in data.get('actions', [])
+                for name in target.get('actions', [])
             ],
             articles=[
                 self.get_or_create_article(pubmed_id)
-                for pubmed_id in data.get('articles', [])
+                for pubmed_id in target.get('articles', [])
             ],
-            category=data['category'],
-        )
-        self.session.add(dpi)
-        return dpi
+            category=target['category'],
+            type=target['type'],
+        ))
 
     def populate(self, url: Optional[str] = None) -> None:
         """Populate DrugBank.
@@ -269,53 +273,66 @@ class Manager(AbstractManager, FlaskMixin, BELManagerMixin, BELNamespaceManagerM
         :param url: Path to the DrugBank XML
         """
         root = get_xml_root(path=url)
+        log.info(f'parsed DrugBank v{root.attrib["version"]}')
 
         # TODO get UniProt id to accession dictionary using Bio2BEL uniprot
         # TODO get HGNC identifier to symbol using Bio2BEL HGNC
 
         for drug_xml in tqdm(root, desc='Drugs'):
-            drug = extract_drug_info(drug_xml)
+            drug_info = extract_drug_info(drug_xml)
 
-            drug_model = Drug(
-                type=self.get_or_create_type(drug['type']),
-                drugbank_id=drug['drugbank_id'],
-                cas_number=drug['cas_number'],
-                name=drug['name'],
-                description=drug['description'],
+            xrefs = drug_info['xrefs']
+            pubchem_compound_id = None
+            chebi_id = None
+            for xref in xrefs:
+                if xref['resource'] == 'PubChem Compound':
+                    pubchem_compound_id = xref['identifier']
+                elif xref['resource'] == 'ChEBI':
+                    chebi_id = xref['identifier']
+
+            drug = Drug(
+                type=self.get_or_create_type(drug_info['type']),
+                drugbank_id=drug_info['drugbank_id'],
+                cas_number=drug_info['cas_number'],
+                name=drug_info['name'],
+                description=drug_info['description'],
                 groups=[
                     self.get_or_create_group(name)
-                    for name in drug['groups']
+                    for name in drug_info['groups']
                 ],
                 atc_codes=[
                     AtcCode(name=name)
-                    for name in drug['atc_codes']
+                    for name in drug_info['atc_codes']
                 ],
                 categories=[
                     self.get_or_create_category(**category)
-                    for category in drug['categories']
+                    for category in drug_info['categories']
                 ],
-                inchi=drug.get('inchi'),
-                inchikey=drug.get('inchikey'),
+                inchi=drug_info.get('inchi'),
+                inchikey=drug_info.get('inchikey'),
+                smiles=drug_info.get('smiles'),
+                chebi_id=chebi_id,
+                pubchem_compound_id=pubchem_compound_id,
                 aliases=[
                     Alias(name=name)
-                    for name in drug['aliases']
+                    for name in drug_info['aliases']
                 ],
                 patents=[
                     self.get_or_create_patent(**patent)
-                    for patent in drug['patents']
+                    for patent in drug_info['patents']
                 ],
                 xrefs=[
                     DrugXref(**xref)
-                    for xref in drug['xrefs']
-                ]
+                    for xref in xrefs
+                ],
             )
 
-            drug_model.protein_interactions = [
-                self._create_drug_protein_interaction(drug_model, drug_protein_interaction_data)
-                for drug_protein_interaction_data in drug['protein_interactions']
-            ]
+            drug.protein_interactions = []
+            for row in drug_info['protein_interactions']:
+                for polypeptide in row['polypeptides']:
+                    self._create_drug_protein_interaction(drug, polypeptide, row['target'])
 
-            self.session.add(drug_model)
+            self.session.add(drug)
 
         t = time.time()
         log.info('committing models')
@@ -554,11 +571,11 @@ class Manager(AbstractManager, FlaskMixin, BELManagerMixin, BELNamespaceManagerM
             for dpi in drug_model.protein_interactions:
                 dpi.add_to_graph(graph)
 
-    def to_bel(self) -> BELGraph:
+    def to_bel(self, drug_namespace: Optional[str] = None, target_namespace: Optional[str] = None) -> BELGraph:
         """Export DrugBank as BEL."""
         graph = BELGraph(
             name='DrugBank',
-            version='5.1',
+            version='5.1.4',
         )
 
         self.add_namespace_to_graph(graph)
@@ -567,11 +584,13 @@ class Manager(AbstractManager, FlaskMixin, BELManagerMixin, BELNamespaceManagerM
         hgnc_manager.add_namespace_to_graph(graph)
 
         dpis = self.list_drug_protein_interactions()
-        for dpi in tqdm(dpis, total=self.count_drug_protein_interactions(),
-                        desc='Mapping drug-protein interactions to BEL'):
-            if dpi.protein.hgnc_id is None:
-                continue
-            dpi.add_to_graph(graph)
+        dpis: Iterable[DrugProteinInteraction] = tqdm(
+            dpis,
+            total=self.count_drug_protein_interactions(),
+            desc='Mapping drug-protein interactions to BEL',
+        )
+        for dpi in dpis:
+            dpi.add_to_graph(graph, drug_namespace=drug_namespace, target_namespace=target_namespace)
 
         return graph
 

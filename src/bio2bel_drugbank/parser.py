@@ -8,6 +8,7 @@ import os
 import re
 import sys
 import time
+import zipfile
 from datetime import datetime
 from typing import Mapping, Optional
 from xml.etree import ElementTree
@@ -21,6 +22,7 @@ log = logging.getLogger(__name__)
 ns = '{http://www.drugbank.ca}'
 inchikey_template = f"{ns}calculated-properties/{ns}property[{ns}kind='InChIKey']/{ns}value"
 inchi_template = f"{ns}calculated-properties/{ns}property[{ns}kind='InChI']/{ns}value"
+smiles_template = f"{ns}calculated-properties/{ns}property[{ns}kind='SMILES']/{ns}value"
 
 pubmed_re = re.compile('pubmed/([0-9]+)')
 
@@ -58,7 +60,16 @@ def get_xml_root(path: Optional[str] = None) -> ElementTree.Element:
     path = get_path(path=path)
     log.info('parsing drugbank at %s', path)
     t = time.time()
-    tree = ElementTree.parse(path)
+
+    if path.endswith('.xml'):
+        tree = ElementTree.parse(path)
+    elif path.endswith('.zip'):
+        with zipfile.ZipFile(path) as z:
+            with z.open('full database.xml') as f:
+                tree = ElementTree.parse(f)
+    else:
+        raise ValueError
+
     log.info('parsed drugbank in %.2f seconds', time.time() - t)
 
     return tree.getroot()
@@ -85,7 +96,7 @@ def extract_drug_info(drug_xml: ElementTree.Element):
         'categories': [
             {
                 'name': x.findtext(f'{ns}category'),
-                'mesh_id': x.findtext(f'{ns}mesh-id')
+                'mesh_id': x.findtext(f'{ns}mesh-id'),
             }
             for x in drug_xml.findall(f"{ns}categories/{ns}category")
         ],
@@ -103,12 +114,13 @@ def extract_drug_info(drug_xml: ElementTree.Element):
         'xrefs': [
             {
                 'resource': x.findtext(f'{ns}resource'),
-                'identifier': x.findtext(f'{ns}identifier')
+                'identifier': x.findtext(f'{ns}identifier'),
             }
             for x in drug_xml.findall(f"{ns}external-identifiers/{ns}external-identifier")
         ],
         'inchi': drug_xml.findtext(inchi_template),
-        'inchikey': drug_xml.findtext(inchikey_template)
+        'inchikey': drug_xml.findtext(inchikey_template),
+        'smiles': drug_xml.findtext(smiles_template),
     }
 
     # Add drug aliases
@@ -126,12 +138,13 @@ def extract_drug_info(drug_xml: ElementTree.Element):
     row['aliases'] = aliases
 
     row['protein_interactions'] = []
+    row['protein_group_interactions'] = []
 
     for category, protein in _iterate_protein_stuff(drug_xml):
-        protein_row = extract_protein_info(category, protein)
-        if not protein_row:
+        target_row = extract_protein_info(category, protein)
+        if not target_row:
             continue
-        row['protein_interactions'].append(protein_row)
+        row['protein_interactions'].append(target_row)
 
     return row
 
@@ -152,41 +165,59 @@ def _iterate_protein_stuff(drug_xml):
 
 
 def extract_protein_info(category, protein):
+    # FIXME Differentiate between proteins and protein groups/complexes
+    polypeptides = protein.findall(f'{ns}polypeptide')
+
+    if len(polypeptides) == 0:
+        protein_type = 'none'
+    elif len(polypeptides) == 1:
+        protein_type = 'single'
+    else:
+        protein_type = 'group'
+
     row = {
-        'category': category,
-        'organism': protein.findtext(f'{ns}organism'),
-        'known_action': protein.findtext(f'{ns}known-action'),
-        'name': protein.findtext(f'{ns}name'),
-        'actions': [
-            action.text
-            for action in protein.findall(f'{ns}actions/{ns}action')
+        'target': {
+            'type': protein_type,
+            'category': category,
+            'known_action': protein.findtext(f'{ns}known-action'),
+            'name': protein.findtext(f'{ns}name'),
+            'actions': [
+                action.text
+                for action in protein.findall(f'{ns}actions/{ns}action')
+            ],
+            'articles': [
+                pubmed_element.text
+                for pubmed_element in protein.findall(f'{ns}references/{ns}articles/{ns}article/{ns}pubmed-id')
+                if pubmed_element.text
+            ],
+        },
+        'polypeptides': [
+            {
+                'name': polypeptide.findtext(f'{ns}name'),
+                'hgnc_symbol': polypeptide.findtext(f'{ns}gene-name'),
+                'hgnc_id': polypeptide.findtext(
+                    f"{ns}external-identifiers/{ns}external-identifier[{ns}resource='HUGO Gene Nomenclature Committee (HGNC)']/{ns}identifier",
+                )[len('HGNC:'):],
+                'uniprot_id': polypeptide.findtext(
+                    f"{ns}external-identifiers/{ns}external-identifier[{ns}resource='UniProtKB']/{ns}identifier",
+                ),
+                'uniprot_accession': polypeptide.findtext(
+                    f"{ns}external-identifiers/{ns}external-identifier[{ns}resource='UniProt Accession']/{ns}identifier",
+                ),
+                'organism': polypeptide.findtext(f'{ns}organism'),
+                'taxonomy': polypeptide.find(f'{ns}organism').attrib['ncbi-taxonomy-id'],
+            }
+            for polypeptide in polypeptides
         ],
-        'articles': [
-            pubmed_element.text
-            for pubmed_element in protein.findall(f'{ns}references/{ns}articles/{ns}article/{ns}pubmed-id')
-            if pubmed_element.text
-        ]
     }
-
-    # TODO generalize to all cross references?
-    uniprot_ids = [polypep.text for polypep in protein.findall(
-        f"{ns}polypeptide/{ns}external-identifiers/{ns}external-identifier[{ns}resource='UniProtKB']/{ns}identifier")]
-    if len(uniprot_ids) != 1:
-        return
-    row['uniprot_id'] = uniprot_ids[0]
-
-    hgnc_ids = [polypep.text for polypep in protein.findall(
-        f"{ns}polypeptide/{ns}external-identifiers/{ns}external-identifier[{ns}resource='HUGO Gene Nomenclature Committee (HGNC)']/{ns}identifier")]
-    if len(hgnc_ids) == 1:
-        row['hgnc_id'] = hgnc_ids[0][len('HGNC:'):]
 
     return row
 
 
-def get_pubchem_to_drugbank() -> Mapping[str, str]:
+def get_pubchem_to_drugbank(path=None) -> Mapping[str, str]:
     """Get a mapping from PubChem Substances to DrugBank identifiers."""
     rv = {}
-    root = get_xml_root()
+    root = get_xml_root(path=path)
     for drug_xml in tqdm(root, desc='Drugs'):
         drug = extract_drug_info(drug_xml)
         drugbank_id = drug['drugbank_id']
@@ -200,9 +231,13 @@ def get_pubchem_to_drugbank() -> Mapping[str, str]:
     return rv
 
 
-if __name__ == '__main__':
-    x = get_pubchem_to_drugbank()
+def main():
+    x = get_pubchem_to_drugbank('/Users/cthoyt/.bio2bel/drugbank/test.xml')
     import json
 
     with open('/Users/cthoyt/Desktop/pubchem_to_drugbank.json', 'w') as f:
         json.dump(x, f)
+
+
+if __name__ == '__main__':
+    main()
