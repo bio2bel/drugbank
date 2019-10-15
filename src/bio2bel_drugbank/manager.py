@@ -505,9 +505,10 @@ class Manager(AbstractManager, FlaskMixin, BELManagerMixin, BELNamespaceManagerM
         if namespace.lower() == 'drugbank':
             if identifier is not None:
                 return self.get_drug_by_drugbank_id(identifier)
-            if name is not None and name.startswith('DB'):
+            elif name.startswith('DB'):
                 return self.get_drug_by_drugbank_id(name)
-            logging.warning(f'could not normalize {node} ({identifier}:{name})')
+            else:
+                return self.get_drug_by_name(name)
 
     def iter_drugs(self, graph: BELGraph, use_tqdm: bool = False) -> Iterable[Tuple[BaseEntity, Drug]]:
         """Iterate over the drugs in the graph."""
