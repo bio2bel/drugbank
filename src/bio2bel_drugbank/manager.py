@@ -478,6 +478,9 @@ class Manager(AbstractManager, FlaskMixin, BELManagerMixin, BELNamespaceManagerM
     def get_drug_by_drugbank_id(self, drugbank_id: str) -> Optional[Drug]:
         return self.session.query(Drug).filter(Drug.drugbank_id == drugbank_id).one_or_none()
 
+    def get_drug_by_name(self, name) -> Optional[Drug]:
+        return self.session.query(Drug).filter(Drug.name == name).one_or_none()
+
     def get_drug_by_inchi(self, inchi: str) -> Optional[Drug]:
         return self.session.query(Drug).filter(Drug.inchi == inchi).one_or_none()
 
