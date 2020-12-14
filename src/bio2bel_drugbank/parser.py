@@ -4,18 +4,16 @@
 
 import itertools as itt
 import logging
-import os
 import re
-import sys
-import time
-import zipfile
 from datetime import datetime
 from typing import Mapping, Optional
 from xml.etree import ElementTree
 
+from drugbank_downloader import parse_drugbank
 from tqdm import tqdm
 
-from bio2bel_drugbank.constants import DRUGBANK_PATH
+import pyobo.config
+
 
 log = logging.getLogger(__name__)
 
@@ -27,52 +25,19 @@ smiles_template = f"{ns}calculated-properties/{ns}property[{ns}kind='SMILES']/{n
 pubmed_re = re.compile('pubmed/([0-9]+)')
 
 
-def get_path(path: Optional[str] = None) -> str:
-    """Get the path to the DrugBank data."""
-    if path is not None:
-        return path
-
-    if os.path.exists(DRUGBANK_PATH):
-        return DRUGBANK_PATH
-
-    log.critical("""DrugBank data not found.
-
-Unfortunately, the data for DrugBank is not available via an open HTTP(S) or FTP endpoint, so please follow these 
-steps to get it yourself:
-
-1. Make an account at: https://www.drugbank.ca
-2. Navigate to: https://www.drugbank.ca/releases/5-1-1/downloads/all-full-database
-3. Unzip the file that gets downloaded. There should be an XML called "full database.xml"
-4. Run the following command on the command line: `mkdir -p ~/.bio2bel/drugbank`. If you're specifying the Bio2BEL
-   directory through a config file or an environment variable, just make a "drugbank" folder there.
-5. Copy "full database.xml" into this folder.
-6. Resume business as usual (try `bio2bel_drugbank populate` now)""")
-    sys.exit(0)
-
-
-def get_xml_root(path: Optional[str] = None) -> ElementTree.Element:
+def get_xml_root(path: Optional[str] = None):
     """Get the XML parser root.
 
     Takes between 35-60 seconds.
 
     :param path: A custom URL for DrugBank XML file
     """
-    path = get_path(path=path)
-    log.info('parsing drugbank at %s', path)
-    t = time.time()
-
-    if path.endswith('.xml'):
-        tree = ElementTree.parse(path)
-    elif path.endswith('.zip'):
-        with zipfile.ZipFile(path) as z:
-            with z.open('full database.xml') as f:
-                tree = ElementTree.parse(f)
-    else:
-        raise ValueError
-
-    log.info('parsed drugbank in %.2f seconds', time.time() - t)
-
-    return tree.getroot()
+    if path:
+        return ElementTree.parse(path).getroot()
+    return parse_drugbank(
+        username=pyobo.config.get_config('drugbank_username'),
+        password=pyobo.config.get_config('drugbank_password'),
+    )
 
 
 def extract_drug_info(drug_xml: ElementTree.Element):
@@ -232,11 +197,12 @@ def get_pubchem_to_drugbank(path=None) -> Mapping[str, str]:
 
 
 def main():
-    x = get_pubchem_to_drugbank('/Users/cthoyt/.bio2bel/drugbank/test.xml')
     import json
+    import os
 
-    with open('/Users/cthoyt/Desktop/pubchem_to_drugbank.json', 'w') as f:
-        json.dump(x, f)
+    x = get_pubchem_to_drugbank()
+    with open(os.path.expanduser('~/Desktop/pubchem_to_drugbank.json'), 'w') as f:
+        json.dump(x, f, indent=2)
 
 
 if __name__ == '__main__':

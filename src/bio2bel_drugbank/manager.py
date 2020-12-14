@@ -9,13 +9,12 @@ import time
 from collections import Counter, defaultdict
 from typing import Dict, Iterable, List, Optional, TextIO, Tuple
 
-
 import click
 import networkx as nx
+import pyobo
 from sqlalchemy import func
 from tqdm import tqdm
 
-import bio2bel_hgnc
 from bio2bel import AbstractManager
 from bio2bel.manager.bel_manager import BELManagerMixin
 from bio2bel.manager.flask_manager import FlaskMixin
@@ -30,6 +29,7 @@ from .models import (
     Species, Type, drug_category, drug_group,
 )
 from .parser import extract_drug_info, get_xml_root
+
 
 __all__ = ['Manager']
 
@@ -579,13 +579,9 @@ class Manager(AbstractManager, FlaskMixin, BELManagerMixin, BELNamespaceManagerM
         """Export DrugBank as BEL."""
         graph = BELGraph(
             name='DrugBank',
-            version='5.1.4',
         )
 
         self.add_namespace_to_graph(graph)
-
-        hgnc_manager = bio2bel_hgnc.Manager(engine=self.engine, session=self.session)
-        hgnc_manager.add_namespace_to_graph(graph)
 
         dpis = self.list_drug_protein_interactions()
         dpis: Iterable[DrugProteinInteraction] = tqdm(
@@ -651,18 +647,12 @@ class Manager(AbstractManager, FlaskMixin, BELManagerMixin, BELNamespaceManagerM
             with open(_dti_symbols_cache_path) as file:
                 return json.load(file)
 
-        hgnc_manager = bio2bel_hgnc.Manager(engine=self.engine, session=self.session)
-        if not hgnc_manager.is_populated():
-            hgnc_manager.populate()
-
-        hgnc_id_symbol_mapping = hgnc_manager.build_hgnc_id_symbol_mapping()
         drug_to_hgnc_ids = self.get_drug_to_hgnc_ids()
-
         rv = defaultdict(list)
 
         for drug, hgnc_ids in drug_to_hgnc_ids.items():
             for hgnc_id in hgnc_ids:
-                hgnc_symbol = hgnc_id_symbol_mapping.get(hgnc_id)
+                hgnc_symbol = pyobo.get_name('hgnc', hgnc_id)
 
                 if hgnc_symbol is None:
                     log.warning('could not map HGNC identifier: %s', hgnc_id)

@@ -20,8 +20,8 @@ max-complexity = 10
 import-order-style = pycharm
 application-import-names =
     bio2bel_drugbank
-    bio2bel_uniprot
     tests
     bio2bel
     pybel
+    pyobo
 format = ${cyan}%(path)s${reset}:${yellow_bold}%(row)d${reset}:${green_bold}%(col)d${reset}: ${red_bold}%(code)s${reset} %(text)s
